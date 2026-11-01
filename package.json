@@ -1,0 +1,10 @@
+{
+  "name": "manometer-agent",
+  "version": "2.0.6",
+  "private": true,
+  "description": "The program that places bets on the account holder's own accounts: placement, read-back, limits, reports.",
+  "license": "AGPL-3.0-only",
+  "repository": "github:Manometer-bet/manometer-agent",
+  "engines": { "node": ">=18" },
+  "scripts": { "test": "node test/run.js" }
+}
