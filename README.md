@@ -6,7 +6,7 @@ Everything about the money stays with you: your accounts, your balance, your on/
 
 ## For developers
 
-Start with [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md): how the Agent is built, how a bet moves through it and how to add a bookmaker. The proposal contract, sealing and receipts are documented at [manometer.bet/developers.html](https://manometer.bet/developers.html). To send signals, use the [Originator Kit](https://github.com/Manometer-bet/manometer-originator-kit).
+Start with [`docs/DEVELOPERS.md`](docs/DEVELOPERS.md): how the Agent is built, how a bet moves through it and how to add a bookmaker. If you build with an AI assistant, point it at [`AGENTS.md`](AGENTS.md). The proposal contract, sealing and receipts are documented at [manometer.bet/developers.html](https://manometer.bet/developers.html). To send signals, use the [Originator Kit](https://github.com/Manometer-bet/manometer-originator-kit).
 
 ## What is in here
 
@@ -51,4 +51,4 @@ The Agent starts switched off. You switch it on, and you choose which of your bo
 
 ## Licence
 
-AGPL-3.0: anyone who runs a modified version as a service has to publish it. See `LICENSE`. The Manometer name and logo are not covered by the licence.
+Copyright (C) 2026 the Manometer contributors. AGPL-3.0: anyone who runs a modified version as a service has to publish it. See `LICENSE`. The Manometer name and logo are not covered by the licence.

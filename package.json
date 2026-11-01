@@ -6,5 +6,5 @@
   "license": "AGPL-3.0-only",
   "repository": "github:Manometer-bet/manometer-agent",
   "engines": { "node": ">=18" },
-  "scripts": { "test": "node test/run.js" }
+  "scripts": { "test": "node test/run.js", "test:dev": "MANOMETER_UNSIGNED=1 node test/run.js" }
 }
