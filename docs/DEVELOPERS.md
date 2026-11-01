@@ -91,10 +91,11 @@ The adapter also uses your normal session in that browser. It handles no passwor
 ## Tests and releases
 
 ```bash
-npm test
-node scripts/verify-install.js extension
+npm run test:dev                            # while you work
+npm test                                    # including the release signature
+node scripts/verify-install.js extension    # compare a folder with the signed release
 ```
 
-`npm test` runs the contract and money gates, checks the release signature and enforces the repository rules, for example that every host permission is named in `PHONE_HOME.md`. A change to what the Agent sends has to change `PHONE_HOME.md` in the same commit.
+`npm test` runs the contract and money gates, checks the release signature and enforces the repository rules, for example that every host permission is named in `PHONE_HOME.md`. A change to `extension/` can't pass the signature check, because only the maintainers can sign. So use `npm run test:dev`; pull requests skip that one check too. A change to what the Agent sends has to change `PHONE_HOME.md` in the same commit.
 
 The operator signs releases, so a change here does not reach installed Agents on its own. See [`CONTRIBUTING.md`](../CONTRIBUTING.md) and, for security problems, [`SECURITY.md`](../SECURITY.md).
