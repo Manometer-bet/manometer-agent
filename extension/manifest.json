@@ -1,0 +1,131 @@
+{
+  "manifest_version": 3,
+  "name": "Manometer Agent",
+  "version": "2.0.6",
+  "description": "Places signed bet proposals on your own bookmaker accounts. No odds model, no signal source.",
+  "permissions": [
+    "storage",
+    "alarms",
+    "webRequest",
+    "tabs",
+    "scripting",
+    "declarativeNetRequest",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://line01.fm41d5-resources.com/*",
+    "https://line02.fm41d5-resources.com/*",
+    "https://clientsapi01.fm41d5-resources.com/*",
+    "https://clientsapi11.fm41d5-resources.com/*",
+    "https://fonbet001.com/*",
+    "https://mystake.com/*",
+    "https://jack.com/*",
+    "https://analytics-sp.googleserv.tech/*",
+    "https://trustdice.win/*",
+    "https://*.sptpub.com/*",
+    "https://api.coinbase.com/*",
+    "https://api.coingecko.com/*",
+    "https://api.kraken.com/*",
+    "https://*.gr-resource.com/*",
+    "https://fonbet.gr/*",
+    "https://jackbit.com/*",
+    "https://en.stoiximan.gr/*",
+    "https://superbet.gr/*",
+    "https://*.superbet.gr/*",
+    "https://production-superbet-offer-gr.freetls.fastly.net/*",
+    "https://prod-superbet-betting.freetls.fastly.net/*",
+    "https://elabet.gr/*",
+    "https://*.elabet.gr/*",
+    "https://*.biahosted.com/*",
+    "https://efbet.gr/*",
+    "https://*.efbet.gr/*",
+    "https://www.pamestoixima.gr/*",
+    "https://*.pamestoixima.gr/*",
+    "https://www.interwetten.gr/*",
+    "https://*.interwetten.gr/*",
+    "https://app.manometer.bet/*",
+    "https://foxtipp.com/*",
+    "https://*.foxtipp.com/*",
+    "https://www.betonline.ag/*",
+    "https://orbitxch.com/*",
+    "https://www.orbitxch.com/*"
+  ],
+  "background": {
+    "service_worker": "engine-sw.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/mystake-inject.js",
+        "content/mystake-kombi-inject.js",
+        "content/trustdice-inject.js"
+      ],
+      "matches": [
+        "https://mystake.com/*",
+        "https://jack.com/*",
+        "https://trustdice.win/*"
+      ]
+    }
+  ],
+  "options_page": "options.html",
+  "action": {
+    "default_title": "Manometer Agent",
+    "default_popup": "options.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://mystake.com/*",
+        "https://jack.com/*",
+        "https://jackbit.com/*"
+      ],
+      "js": [
+        "content/mystake-inject.js",
+        "content/mystake-kombi-inject.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "https://trustdice.win/*"
+      ],
+      "js": [
+        "content/trustdice-inject.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://trustdice.win/*"
+      ],
+      "js": [
+        "content/trustdice-place.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://efbet.gr/*",
+        "https://www.efbet.gr/*"
+      ],
+      "js": [
+        "content/efbet-inject.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "td_lean",
+        "enabled": true,
+        "path": "rules-trustdice.json"
+      }
+    ]
+  }
+}

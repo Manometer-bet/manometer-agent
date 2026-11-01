@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="betlog.css" />
+  <title>Bet log — Manometer Agent</title>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Lifetime Bet Log</h1>
+      <span class="sub">POD-compatible · stored in your folder · all bets incl. uncertain</span>
+    </div>
+    <span id="conn" class="conn">…</span>
+    <div class="spacer"></div>
+    <div class="tool">
+      <select id="range">
+        <option value="7">Last 7 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="0" selected>All time</option>
+      </select>
+      <input type="text" id="search" placeholder="Search event / league / outcome…" />
+      <select id="fStatus">
+        <option value="all">All statuses</option>
+        <option value="settled">Settled</option>
+        <option value="placed">Placed</option>
+        <option value="pending">Pending</option>
+        <option value="uncertain">Uncertain</option>
+        <option value="skipped">Skipped</option>
+      </select>
+      
+      <button class="btn" id="reload">Reload</button>
+      
+      
+      
+      
+      <button class="btn" id="exportBtn">Export CSV</button>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <section class="card">
+    <h2>Profit and Bets</h2>
+    <div class="h-sub">Cumulative actual vs expected (CLV / EV) profit — settled bets in the selected period</div>
+    <div class="chartwrap"><svg class="chart" id="chart" viewBox="0 0 1000 320" preserveAspectRatio="none"></svg></div>
+    <div class="legend"><span><i style="background:var(--good)"></i>Actual Profit</span><span><i style="background:var(--cyan)"></i>Expected (CLV/EV)</span></div>
+  </section>
+
+  <section class="card" style="padding:0">
+    <div class="tablewrap">
+      <table class="bets">
+        <thead><tr>
+          <th>Event</th><th>Start (UTC)</th><th>Logged (UTC)</th><th>Market</th><th>Outcome</th><th>Period</th>
+          <th class="num">Stake</th><th class="num">Odds</th><th class="num">Logged EV</th><th class="num" title="Live-EV: Quote vs. aktuelle Shin-NVP — aktualisiert bis Anpfiff, dann eingefroren">Live EV</th><th class="num" title="Echte No-Vig-Quote von Pinnacle zum Closing (Shin-de-vig) — die Messlatte, aus der die CLV gerechnet wird">Close NVP</th><th class="num">CLV</th>
+          <th>Result</th><th class="num">Profit</th><th></th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty" style="display:none"></div>
+    </div>
+  </section>
+
+  
+
+  
+
+  
+  <script src="engine-betlog.js"></script>
+</body>
+</html>

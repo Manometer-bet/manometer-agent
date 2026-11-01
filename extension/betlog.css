@@ -1,0 +1,65 @@
+:root{
+  --bg:#0c0f14; --panel:#141921; --panel-2:#1b212b; --line:#26303d; --ink:#e7edf5; --muted:#8a98a8;
+  --muted-2:#5f6b7a; --accent:#3da9fc; --good:#14e08a; --bad:#ff5d6c; --warn:#e0b714; --cyan:#27d3e0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;}
+.topbar{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5;flex-wrap:wrap}
+.topbar h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+.topbar .sub{color:var(--muted);font-size:11px}
+.spacer{flex:1}
+.tool{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+select,input[type=text]{background:var(--panel-2);color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:6px 9px;font:600 12px inherit}
+button.btn{all:unset;cursor:pointer;font:600 12px inherit;color:var(--ink);background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:6px 11px}
+button.btn:hover{border-color:var(--accent)}
+button.btn.primary{background:var(--accent);color:#05121f;border-color:var(--accent)}
+button.btn.danger{color:var(--bad);border-color:rgba(255,93,108,.4)}
+button.btn.danger:hover{border-color:var(--bad);background:rgba(255,93,108,.1)}
+.conn{font-size:11px;color:var(--muted)}
+.conn.ok{color:var(--good)}
+.conn.bad{color:var(--warn)}
+
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;padding:16px 18px}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .k-l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.kpi .k-v{font-size:24px;font-weight:700;margin-top:6px}
+.kpi .k-s{color:var(--muted);font-size:11px;margin-top:3px}
+.kpi .k-v.pos{color:var(--good)} .kpi .k-v.neg{color:var(--bad)}
+
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:6px 18px 16px;padding:14px 16px}
+.card h2{font-size:13px;margin:0 0 2px} .card .h-sub{color:var(--muted);font-size:11px;margin-bottom:10px}
+.chartwrap{width:100%;overflow:hidden}
+svg.chart{width:100%;height:320px;display:block}
+.legend{display:flex;gap:18px;justify-content:center;margin-top:8px;font-size:11px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:6px;vertical-align:middle}
+
+table.bets{width:100%;border-collapse:collapse;font-size:12px}
+table.bets th,table.bets td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+table.bets th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;background:var(--panel)}
+table.bets td.num,table.bets th.num{text-align:right}
+.tablewrap{max-height:62vh;overflow:auto}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600}
+.pill.win{background:rgba(20,224,138,.15);color:var(--good)}
+.pill.loss{background:rgba(255,93,108,.15);color:var(--bad)}
+.pill.void{background:rgba(138,152,168,.15);color:var(--muted)}
+.pill.pending{background:rgba(61,169,252,.13);color:var(--accent)}
+.pill.placed{background:rgba(20,224,138,.13);color:var(--good)}
+.pill.uncertain{background:rgba(224,183,20,.15);color:var(--warn)}
+.pill.skipped{background:rgba(138,152,168,.1);color:var(--muted-2)}
+.pos{color:var(--good)} .neg{color:var(--bad)} .muted{color:var(--muted)}
+td .ev{font-variant-numeric:tabular-nums}
+.row-act{cursor:pointer;color:var(--accent)}
+.empty{padding:30px;text-align:center;color:var(--muted)}
+.badge{font-size:10px;color:var(--muted-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
+
+/* settle editor */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:20}
+.modal-bg.show{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;min-width:360px;max-width:90vw}
+.modal h3{margin:0 0 4px;font-size:14px}
+.modal .m-sub{color:var(--muted);font-size:11px;margin-bottom:12px}
+.modal .frow{display:flex;gap:10px;align-items:center;margin:8px 0}
+.modal .frow label{width:120px;color:var(--muted);font-size:12px}
+.modal .frow input,.modal .frow select{flex:1}
+.modal .m-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.hint{color:var(--muted-2);font-size:11px;margin-top:8px}

@@ -1,0 +1,40 @@
+[
+  {
+    "id": 1,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "initiatorDomains": ["trustdice.win"],
+      "requestDomains": ["facebook.com", "snapchat.com", "clarity.ms", "imotech.video", "wonderpush.com", "googleserv.tech", "googletagmanager.com", "google-analytics.com", "doubleclick.net", "snap.licdn.com"]
+    }
+  },
+  {
+    "id": 2,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "requestDomains": ["d1bvoel1nv172p.cloudfront.net"],
+      "resourceTypes": ["image"]
+    }
+  },
+  {
+    "id": 3,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "requestDomains": ["sptpub.com"],
+      "urlFilter": "flags_by_code",
+      "resourceTypes": ["image"]
+    }
+  },
+  {
+    "id": 4,
+    "priority": 1,
+    "action": { "type": "block" },
+    "condition": {
+      "requestDomains": ["sptpub.com"],
+      "urlFilter": "/promo/images/",
+      "resourceTypes": ["image"]
+    }
+  }
+]
