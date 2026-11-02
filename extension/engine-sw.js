@@ -290,6 +290,10 @@ const _gehalten = {};                // proposalId -> Pause schon einmal gemelde
 // Vorschläge kamen nacheinander Vorgaben, Keepalive, Kontostände, Status und Protokoll, je Anfrage rund 1,2 s, und jede konnte 12 s hängen. Ein Fehler bei den Vorgaben ließ den ganzen Durchlauf aus.
 // Jetzt läuft das alles nebenher; der Takt wartet nur noch auf die Vorschläge. Bei einem Netzfehler gelten die letzten gültigen Vorgaben höchstens 60 s weiter. Sagt die Antwort selbst nein (gesperrt, aus, Signatur), gilt das sofort.
 const VORGABEN_TAKT_MS = 10000, VORGABEN_GNADE_MS = 60000, VORSCHLAG_FRIST_MS = 6000;
+// 11 von 12 verspäteten Orbit-Vorschlägen kamen genau zum 30-s-Wecker an, die 3-s-Schleife lief in diesen Momenten also nicht (Timer oder Worker, im Browser nicht bewiesen). Darum hängt die Abholung nicht mehr an einem Timer:
+// Die Bridge hält die Anfrage bis zu 10 s offen und antwortet sofort, wenn sich die eigene Liste ändert (bridge.js). 10 s, damit Vorgaben, Status und Wiederholungen im bisherigen Takt bleiben. Ein Paket für die alte Bridge fragt weiter alle 3 s.
+const VORSCHLAG_WARTEN_MS = 10000;
+let _vorschlagStand = "", _bridgeHielt = false;
 let _cfgState = null, _cfgOkTs = 0, _cfgHolTs = 0, _cfgHolt = false;
 async function vorgabenHolen(b) {
   if (_cfgHolt) return;
@@ -371,11 +375,19 @@ async function tick() {
     if (!loc.on) return;                                   // der Betreiber hat die App aus
     if (!cfgState.ok) { await einmalMelden("no bets: " + cfgState.reason); return; }
     if (!loc.books.length) { await einmalMelden("no bets: no bookmaker ticked"); return; }
-    const cfg = cfgState.cfg;
 
     let list = [];
-    try { list = await bridgeGet(b, "/api/proposals", VORSCHLAG_FRIST_MS); } catch (e) { await einmalMelden("fetch failed: " + String((e && e.message) || e)); return; }
+    const warten = !!b.bridgeKey;
+    try {
+      const j = await bridgeGet(b, "/api/proposals" + (warten ? "?warte=" + VORSCHLAG_WARTEN_MS + "&kennt=" + encodeURIComponent(_vorschlagStand) : ""), VORSCHLAG_FRIST_MS + (warten ? VORSCHLAG_WARTEN_MS : 0));
+      if (j && Array.isArray(j.liste)) { list = j.liste; _vorschlagStand = String(j.stand || ""); _bridgeHielt = true; } else list = j;   // Dienst ohne langes Warten: die blanke Liste wie bisher
+    } catch (e) { await einmalMelden("fetch failed: " + String((e && e.message) || e)); return; }
     if (!Array.isArray(list)) return;
+    // Während des Wartens kann der Betreiber die App ausgeschaltet oder Bücher abgewählt haben, und die Vorgaben können neu sein. Es gilt, was JETZT steht.
+    loc = await local();
+    const cfgJetzt = _cfgState || { ok: false };
+    if (!loc.on || !cfgJetzt.ok || !loc.books.length) return;
+    const cfg = cfgJetzt.cfg;
     const fired = await lockState();
     const now = Date.now();
 
@@ -495,15 +507,20 @@ chrome.alarms.create(POLL_ALARM, { periodInMinutes: 0.5 });
 // Fensters darf eine Schleife alle ~5 s abrufen; die laufende Event-Verarbeitung haelt den Service
 // Worker wach. Latenz Proposal->Abholung sinkt von 0-30 s auf 0-3 s (31.10.2026: Takt 3 s statt 5 s). Ein Guard verhindert
 // ueberlappende Buersts (Alarm feuert waehrend der vorige Burst noch laeuft).
-let _burstBusy = false;
+let _burstBusy = false, _burstBis = 0;
 async function tickBurst() {
+  _burstBis = Date.now() + 28000;   // 01.11.2026: Jeder Wecker verlängert. Eine offene Anfrage läuft über das Fensterende hinaus, ohne Verlängerung gäbe es danach eine Lücke bis zum nächsten Wecker.
   if (_burstBusy) return;
   _burstBusy = true;
   try {
-    const t0 = Date.now();
-    while (Date.now() - t0 < 28000) {
+    let schnell = 0;
+    while (Date.now() < _burstBis) {
+      const t0 = Date.now();
+      _bridgeHielt = false;
       try { await tick(); } catch (_) {}
-      await new Promise((rs) => setTimeout(rs, 3000));
+      // Hat die Bridge geantwortet, geht sofort die nächste Anfrage raus. Der Timer bleibt für Fehler, die alte Bridge und falls die Bridge wiederholt sofort antwortet.
+      schnell = _bridgeHielt && Date.now() - t0 < 300 ? schnell + 1 : 0;
+      if (!_bridgeHielt || schnell >= 3) await new Promise((rs) => setTimeout(rs, 3000));
     }
   } finally { _burstBusy = false; }
 }
