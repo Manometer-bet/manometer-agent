@@ -15,7 +15,7 @@
 // Er ist 1:1 vom produktiv laufenden .com-Pfad übernommen — vor dem ersten scharfen Einsatz bitte
 // eine kleine Testwette. Fonbet GR meldet in betSlipInfo einen Mindesteinsatz von 0,32 (sums.min).
 "use strict";
-import { couponOutcome, harvestAuth, feedZusatz, SPORT_ZIEL, sportWurzel, sportZiel, kombiSetzen, fbKontoLesen } from "./fonbet.js";   // geteilte Logik: Coupon-Verdikt, Page-Read der Session, Stand + Sperren, Sportarten (1.2.64), Kombiwette (1.2.72)
+import { couponOutcome, erlaubterBetrag, harvestAuth, feedZusatz, SPORT_ZIEL, sportWurzel, sportZiel, kombiSetzen, fbKontoLesen } from "./fonbet.js";   // geteilte Logik: Coupon-Verdikt, Page-Read der Session, Stand + Sperren, Sportarten (1.2.64), Kombiwette (1.2.72)
 
 // _auth aus Sniff ODER (Fallback) direkt aus dem fonbet.gr-Tab lesen — behebt „keine Session" trotz Login.
 async function ensureAuth(ctx) {
@@ -183,6 +183,15 @@ export async function place(p, stakeEur, ctx) {
   if (!(tgt.odds > 1)) return { status: "blocked", reason: "fonbet.gr: kein Preis für diesen Ausgang" };
   if (tgt.odds < Number(p.minOdds)) return { status: "blocked", reason: `fonbet.gr: ${tgt.odds.toFixed(2)} unter Min ${Number(p.minOdds).toFixed(2)} (Slippage-Floor)` };
 
+  // 01.11.2026: Nennt das Buch ein Limit, einmal mit genau dem Betrag neu setzen (fonbet.js erlaubterBetrag).
+  const wunsch = Math.round(Number(stakeEur) * 100) / 100;
+  const r = await scheinSenden(p, wunsch, ctx, a, tgt);
+  const erlaubt = r.status === "blocked" ? erlaubterBetrag(r.reason, wunsch) : 0;
+  if (!erlaubt) return r;
+  ctx.log(`fonbet.gr: book limit, placing the allowed ${erlaubt} € instead of ${wunsch} €`);
+  return await scheinSenden(p, erlaubt, ctx, a, tgt);
+}
+async function scheinSenden(p, amount, ctx, a, tgt) {
   const host = _clients;
   const authBody = { lang: LANG, fsid: a.fsid, sysId: 21, clientId: a.clientId, CDI: Number(a.clientId) % 1001, deviceId: a.deviceId };   // CDI = Konto-Nr. mod 1001, wie die Seite es rechnet (bis 1.2.72 fest 649, der Wert EINES Kontos)
   let rid;
@@ -190,9 +199,8 @@ export async function place(p, stakeEur, ctx) {
     const r1 = await fetchT(host + "/coupon/betRequestId", { method: "POST", headers: HDRS, body: JSON.stringify(authBody) }, 15000);
     const j1 = await r1.json(); rid = j1 && j1.requestId;
   } catch (e) { return { status: "blocked", reason: "fonbet.gr: betRequestId fehlgeschlagen: " + String((e && e.message) || e), odds: tgt.odds }; }
-  if (!rid) return { status: "uncertain", reason: "fonbet.gr: keine requestId erhalten (Konto prüfen)", odds: tgt.odds };
+  if (!rid) return { status: "uncertain", reason: "fonbet.gr: keine requestId erhalten (Konto prüfen)", odds: tgt.odds, stake: amount };
 
-  const amount = Math.round(Number(stakeEur) * 100) / 100;
   // 04.10.2026 LIVE: bei einem laufenden Spiel geht der Stand mit (score "h:a"), wie ihn die Seite schickt — s. fonbet.js.
   const wette = Object.assign({ num: 1, event: Number(tgt.eventId), factor: tgt.factor, value: tgt.odds }, (tgt.live && tgt.score) ? { score: tgt.score } : {}, { zone: "es" });
   const body = { requestId: rid, lang: LANG,
@@ -203,7 +211,7 @@ export async function place(p, stakeEur, ctx) {
   try {
     const r2 = await fetchT(host + "/coupon/bet", { method: "POST", headers: HDRS, body: JSON.stringify(body) }, 20000);
     res = await r2.json();
-  } catch (e) { return { status: "uncertain", reason: "fonbet.gr: Setz-Request abgebrochen (im Konto prüfen): " + String((e && e.message) || e), odds: tgt.odds }; }
+  } catch (e) { return { status: "uncertain", reason: "fonbet.gr: Setz-Request abgebrochen (im Konto prüfen): " + String((e && e.message) || e), odds: tgt.odds, stake: amount }; }
 
   let oc = couponOutcome(res);
   // READ-BACK: nicht nur bei Live-`delay`, sondern bei JEDEM unklaren Verdikt per requestId nachfassen
@@ -225,11 +233,11 @@ export async function place(p, stakeEur, ctx) {
   }
   if (oc.kind === "placed") {
     const cp = oc.cp, fill = Number(cp.originalK) || tgt.odds;
-    return { status: "placed", odds: fill, ticket: String(cp.regId),
+    return { status: "placed", odds: fill, ticket: String(cp.regId), stake: amount,
              note: (p.minOdds && fill < Number(p.minOdds)) ? `gefüllt @ ${fill.toFixed(2)} UNTER Min ${Number(p.minOdds).toFixed(2)} — prüfen` : undefined };
   }
   if (oc.kind === "rejected") return { status: "blocked", reason: "fonbet.gr: abgelehnt (resultCode " + oc.rc + ")" + (oc.rt ? ": " + oc.rt : ""), odds: tgt.odds };
-  return { status: "uncertain", reason: "fonbet.gr: kein eindeutiges Coupon-/betResult-Verdikt (im Konto prüfen)", odds: tgt.odds };
+  return { status: "uncertain", reason: "fonbet.gr: kein eindeutiges Coupon-/betResult-Verdikt (im Konto prüfen)", odds: tgt.odds, stake: amount };
 }
 
 // ---- 1.2.72 — KOMBIWETTE („Express“) -------------------------------------------------------------------------------------------
