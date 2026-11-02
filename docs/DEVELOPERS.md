@@ -25,7 +25,7 @@ Other documentation:
 
 ## How a bet moves through the Agent
 
-1. The Agent polls the bridge for proposals addressed to it, and for signed settings from the operator.
+1. The Agent asks the bridge for proposals addressed to it, and for signed settings from the operator. The bridge keeps the proposal request open and answers as soon as the list changes, so a new proposal arrives at once.
 2. It checks the signature, expiry, kick-off and minimum odds, then your choice of agents and stakes, the stake limit of your account and your own limits.
 3. It locks the `proposalId` before anything is sent, so a proposal delivered twice cannot place two bets.
 4. It calls `place()` on the adapter of that bookmaker.
