@@ -1,6 +1,6 @@
 {
   "name": "manometer-agent",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "private": true,
   "description": "The program that places bets on the account holder's own accounts: placement, read-back, limits, reports.",
   "license": "AGPL-3.0-only",

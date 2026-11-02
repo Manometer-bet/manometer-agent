@@ -10,7 +10,7 @@ The bridge is a small document store between the Agent and the operator, on the 
 
 | Path | What |
 | --- | --- |
-| `GET /api/proposals` | Signed proposals for your Agent. You receive only your own. |
+| `GET /api/proposals` | Signed proposals for your Agent. You receive only your own. The bridge keeps this request open for up to 10 seconds and answers as soon as your list changes. |
 | `GET /api/doc/cfg-<channel>` | Signed settings from the operator: limits, books, kill switch, and the agents and stakes you chose in your account. |
 | `GET /api/doc/log-<channel>` | Your settled bets, for the bet log page. |
 | `GET /api/doc/st-<channel>` | Only when no local settings exist: your last bookmaker choice. The Agent stays off until you switch it on. |
