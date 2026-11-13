@@ -5,6 +5,9 @@
 // Orbit-Tab. Darum laeuft hier alles aus diesem Tab, im Seitenkontext (content/orbitxch-place.js, world MAIN): dort ist die Sitzung angemeldet.
 // Der Tab liest Anmeldung, Markt und Preis selbst und unmittelbar vor dem Senden; der Edge-Dienst wird nicht gebraucht.
 // Nur Fussball, Sieger ganzes Spiel (1X2), vor dem Anpfiff und live. Kein Lay, keine Arb-Beine, keine Maker-Orders, keine Kombis.
+// — Basketball Drops auch bei Orbit): dazu Basketball (sport basket), Sieger ueber das
+// ganze Spiel = Orbits „Match Odds“ mit genau zwei Laeufern Heim / Gast (inklusive Verlaengerung, wie die Pinnacle-Moneyline), nur home / away,
+// nur vor dem Anpfiff. Das Seiten-Script (orbit-back-2) prueft Sportart und Laeufer des Markts selbst; eine aeltere Fassung im Tab wird ersetzt.
 //
 // AUSWAHL: bookRef.outcomeId = "<Markt>:<Auswahl>", z. B. "1.263704802:2426" (Orbits Nummern, Buch-Sicht, aus dem Edge-Dienst des Operators);
 // bookRef.eventId = Orbits Spiel-Nummer. p.sel (home/draw/away) ist Buch-Sicht wie bei Interwetten (bettorBuchSel): der Tab prueft, dass die
@@ -12,21 +15,24 @@
 // MINDESTQUOTE: p.minOdds ist EFFEKTIV nach 3 % Provision wie im Board; Limit der Order = effektiv → roh → aufwaerts auf Orbits Leiter.
 // ABLAUF: EIN BACK-Limit zur Mindestquote, warten (vor dem Anpfiff 4 s; live betDelay + 2,5 s, hoechstens 15 s), Stand lesen, Rest stornieren.
 // ERGEBNIS: stake = gematchter Betrag, odds = effektiver Schnitt. Nichts gematcht = failed (keine Wette). Antwort, Stand oder Storno unklar = uncertain.
+// NACHLESEN (04.11.2026): Storno nicht bestaetigt = bis 20 s weiter lesen; bleibt es unsicher, liest der Status-Takt bis 3 h nach und berichtigt die Quittung.
 // AUFTRAGS-NUMMER: fest je Vorschlag (aus proposalId) und VOR dem Senden auf Platte. Die Engine gibt die Sperre nach failed frei und ruft nach
 // 45 s erneut: ein Vorschlag, der einmal gesendet wurde, sendet nie wieder und bekommt das erste Ergebnis zurueck. blocked verbraucht die Nummer nicht.
 "use strict";
 
 const ORIGIN = "https://orbitxch.com", ORIGIN_WWW = "https://www.orbitxch.com";
 const TAB_MUSTER = [ORIGIN + "/*", ORIGIN_WWW + "/*"];
-const SCRIPT = "content/orbitxch-place.js", KERN = "orbit-back-1";    // KERN wie im Script
+const SCRIPT = "content/orbitxch-place.js", KERN = "orbit-back-2";    // KERN wie im Script (1.2.88: -2 = Fussball und Basketball)
 const PROVISION = 0.03;                                                // Orbit: 3 % auf den Netto-Gewinn (wie ORBIT_PROVISION im Operator)
 const MIN_EINSATZ = 7, MAX_EINSATZ = 200;                              // Orbit minBetSize 7 €; 200 € = Grenze des Auftragswegs beim Operator
 const BACK_FRIST_MS = 4000, LIVE_PUFFER_MS = 2500, LIVE_WARTEN_MAX_MS = 15000;   // so lange darf die Order matchen (ORBIT_BACK_FRIST_MS usw.)
 const PING_MS = 5000, OFFEN_MS = 12000, STORNO_MS = 30000, SETZEN_MS = 40000, PROBE_ALLE_MS = 60000, STAND_GILT_MS = 180000;
+// 04.11.2026: Nachlesen. Storno nicht bestaetigt: noch hoechstens 20 s alle 2 s lesen; danach liest der Status-Takt (nachlesen unten) bis 3 h nach dem Senden.
+const NACHLESEN_MS = 20000, NACHLESEN_TAKT_MS = 2000, SPAETER_BIS_MS = 3 * 3600e3, KORREKTUR_GILT_MS = 24 * 3600e3;
 const MERKER = "orbitAuftraege", MERKER_MAX = 300, MERKER_TAGE_MS = 7 * 24 * 3600e3;
 
 export const id = "orbitxch";
-export const sports = { fb: true };
+export const sports = { fb: true, basket: true };   // 1.2.88: Basketball dazu (nur vor dem Anpfiff, siehe vorschlagLesen)
 export const hosts = { orbit: { origin: ORIGIN, www: ORIGIN_WWW } };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -140,12 +146,15 @@ const AUSWAHL_FORM = /^(1\.\d{5,12}):(\d{1,12})$/;
 function vorschlagLesen(p, stakeEur) {
   const nein = (fehler) => ({ fehler });
   const feed = (p.sport == null || p.sport === "") ? "fb" : String(p.sport);
-  if (!sports[feed]) return nein("Orbit: sport " + feed + " is not connected (football only)");
+  if (!sports[feed]) return nein("Orbit: sport " + feed + " is not connected (football and basketball only)");
+  const live = p.live === true || !!(p.eventIdentity && p.eventIdentity.live === true);
+  if (feed === "basket" && live) return nein("Orbit: basketball is connected before tip-off only");
   if ((p.mkt || "ml") !== "ml") return nein("Orbit: market " + String(p.mkt) + " is not connected (match winner only)");
   if ((p.scope || "match") !== "match") return nein("Orbit: scope " + String(p.scope) + " is not connected (whole match only)");
   if (p.line != null || p.legs != null) return nein("Orbit: lines and parlays are not connected");
   if (p.side != null && String(p.side).toUpperCase() !== "BACK") return nein("Orbit: only BACK is connected");
   if (!(p.sel === "home" || p.sel === "draw" || p.sel === "away")) return nein("Orbit: selection side " + String(p.sel).slice(0, 8) + " unknown");
+  if (feed === "basket" && p.sel === "draw") return nein("Orbit: basketball has no draw (home or away only)");
   const eventId = String((p.bookRef && p.bookRef.eventId) == null ? "" : p.bookRef.eventId);
   if (!/^\d{5,15}$/.test(eventId)) return nein("Orbit: bookRef.eventId missing");
   const m = AUSWAHL_FORM.exec(String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId));
@@ -154,7 +163,7 @@ function vorschlagLesen(p, stakeEur) {
   const einsatz = r2(stakeEur);
   if (!(einsatz >= MIN_EINSATZ)) return nein("Orbit: stake " + einsatz + " € below the Orbit minimum " + MIN_EINSATZ + " €");
   if (einsatz > MAX_EINSATZ) return nein("Orbit: stake " + einsatz + " € above " + MAX_EINSATZ + " €");
-  return { eventId, marketId: m[1], selectionId: m[2], sel: p.sel, einsatz, minOdds: Number(p.minOdds), live: p.live === true || !!(p.eventIdentity && p.eventIdentity.live === true) };
+  return { eventId, marketId: m[1], selectionId: m[2], sel: p.sel, sport: feed, einsatz, minOdds: Number(p.minOdds), live };
 }
 
 async function setzenEinmal(p, stakeEur, ctx, nr) {
@@ -176,8 +185,10 @@ async function setzenEinmal(p, stakeEur, ctx, nr) {
 
   // AB HIER kann die Order bei Orbit sein: nur eine Antwort des Tabs mit gesendet:false ist noch ein sicheres „nicht gesendet“.
   const fertig = async (res) => { await merkeFertig(ctx, nr, res); return res; };
+  // Merker fuer das spaetere Nachlesen einer unsicheren Order mit Ticket: nur Nummern und Betraege, nichts vom Konto.
+  const spaeter = (ticket, grenze) => ({ pid: String(p.proposalId), marketId: v.marketId, selectionId: v.selectionId, ticket: String(ticket), wunsch: v.einsatz, grenze: Number(grenze) || null, bis: Date.now() + SPAETER_BIS_MS });
   const t0 = Date.now();
-  const a = await imTab(tabId, { art: "setzen", auftragId: nr, armed: true, eventId: v.eventId, marketId: v.marketId, selectionId: v.selectionId, sel: v.sel, live: v.live, amount: v.einsatz, minOdds: v.minOdds }, SETZEN_MS);
+  const a = await imTab(tabId, { art: "setzen", auftragId: nr, armed: true, sport: v.sport, eventId: v.eventId, marketId: v.marketId, selectionId: v.selectionId, sel: v.sel, live: v.live, amount: v.einsatz, minOdds: v.minOdds }, SETZEN_MS);
   if (a && a.gesendet === false && !a.error) {
     await vergiss(ctx, nr);
     const reason = a.fehltKern ? "Orbit: the page was reloaded before the order — nothing sent" : String(a.reason || "Orbit: not sent — nothing sent");
@@ -209,8 +220,8 @@ async function setzenEinmal(p, stakeEur, ctx, nr) {
     };
     let l = await lies();
     for (let i = 0; !l.wette && i < 2; i++) { await sleep(2000); l = await lies(); }
-    let wt = l.wette;
-    if (!wt) return await fertig({ status: "uncertain", reason: "Orbit: state of order " + ticket + " not readable (" + String(l.lesbar ? (l.anzahl ? "several rows" : "not among the current bets") : l.grund).slice(0, 80) + ") — check Orbit (a rest may still be open)", ticket, odds: oddsMarkt });
+    let wt = l.wette, nachgelesen = false;
+    if (!wt) return await fertig({ status: "uncertain", reason: "Orbit: state of order " + ticket + " not readable (" + String(l.lesbar ? (l.anzahl ? "several rows" : "not among the current bets") : l.grund).slice(0, 80) + ") — check Orbit (a rest may still be open)", ticket, odds: oddsMarkt, nachlesen: spaeter(ticket, grenze) });
     if (String(wt.side) !== "BACK" || String(wt.selectionId) !== v.selectionId) return await fertig({ status: "uncertain", reason: "Orbit: order " + ticket + " does not match the order sent — check Orbit", ticket, odds: oddsMarkt });
     if (Number(wt.sizeRemaining) > 0) {
       const s = await imTab(tabId, { art: "storno", marketId: v.marketId, offerId: ticket }, STORNO_MS);
@@ -225,10 +236,25 @@ async function setzenEinmal(p, stakeEur, ctx, nr) {
           else if (n.lesbar && !n.anzahl && !(Number(stand.sizeMatched) > 0)) { stand = Object.assign({}, stand, { sizeRemaining: 0, offerState: "GONE" }); bestaetigt = true; }
         }
       }
+      // Pohang–Gamba, Unentschieden live: Orbit lehnte den Storno ab (HTTP 400), gemeldet
+      // wurden 0,27 statt 10 €, der Rest wurde danach doch angenommen. Darum weiter LESEN, kein zweiter Storno, bis kein Rest mehr im Buch steht
+      // (angenommen, gestrichen oder verfallen). Fehlt die Zeile, wird nichts geraten. Bleibt der Rest, liest der Status-Takt spaeter nach.
+      if (!bestaetigt) {
+        ctx.log(`orbitxch: Storno nicht bestaetigt · Order ${ticket} · lese bis ${NACHLESEN_MS / 1000} s nach`);
+        for (let i = 0; i < NACHLESEN_MS / NACHLESEN_TAKT_MS && Number(stand.sizeRemaining) > 0; i++) {
+          await sleep(NACHLESEN_TAKT_MS);
+          const n = await lies();
+          if (n.wette) stand = n.wette;
+          else if (n.lesbar && !n.anzahl) break;
+        }
+        bestaetigt = !(Number(stand.sizeRemaining) > 0) && String(stand.offerId) === ticket && String(stand.side) === "BACK" && String(stand.selectionId) === v.selectionId;
+        nachgelesen = bestaetigt;
+      }
       if (!bestaetigt) {
         const m = r2(stand.sizeMatched);
         return await fertig({ status: "uncertain", reason: "Orbit: cancelling the unmatched rest NOT confirmed (" + String((s && (s.grund || s.error)) || "?").slice(0, 80) + ") — check Orbit, a resting order may still match", ticket,
-          odds: m > 0 && Number(stand.averagePrice) > 1 ? effektiv(Number(stand.averagePrice), 10000) : oddsMarkt, stake: m > 0 ? m : undefined, cur: fremdWaehrung(stand), note: m > 0 ? "Orbit matched " + m + " of " + v.einsatz + " € so far" : undefined });
+          odds: m > 0 && Number(stand.averagePrice) > 1 ? effektiv(Number(stand.averagePrice), 10000) : oddsMarkt, stake: m > 0 ? m : undefined, cur: fremdWaehrung(stand), note: m > 0 ? "Orbit matched " + m + " of " + v.einsatz + " € so far" : undefined,
+          nachlesen: spaeter(ticket, grenze) });
       }
       if (stand && String(stand.offerId) === ticket) wt = stand;
     }
@@ -238,12 +264,53 @@ async function setzenEinmal(p, stakeEur, ctx, nr) {
       return await fertig({ status: "failed", reason: "Orbit: nothing matched at ≥ " + grenze + " within " + Math.round(warten / 1000) + " s — order cancelled, no bet", ticket });
     }
     if (schnitt < grenze - 1e-6) return await fertig({ status: "uncertain", reason: "Orbit: order " + ticket + " shows an average " + schnitt + " below its limit " + grenze + " — check Orbit", ticket, stake: gematcht, odds: effektiv(schnitt, 10000), cur: fremdWaehrung(wt) });
-    ctx.log(`orbitxch: gesetzt · Order ${ticket} · ${gematcht} von ${v.einsatz} € · Schnitt ${schnitt} roh · nach ${Date.now() - t0} ms`);
+    ctx.log(`orbitxch: gesetzt · Order ${ticket} · ${gematcht} von ${v.einsatz} € · Schnitt ${schnitt} roh · nach ${Date.now() - t0} ms${nachgelesen ? " · nachgelesen" : ""}`);
+    const teil = gematcht < v.einsatz - 0.01;
     return await fertig({ status: "placed", stake: gematcht, odds: effektiv(schnitt, 10000), ticket, verified: true, rawOdds: schnitt, cur: fremdWaehrung(wt),
-      note: gematcht < v.einsatz - 0.01 ? "Orbit matched " + gematcht + " of " + v.einsatz + " € @ " + schnitt + " (rest cancelled)" : undefined });
+      note: nachgelesen ? (teil ? "Orbit matched " + gematcht + " of " + v.einsatz + " € @ " + schnitt + " (cancel not confirmed, no rest left when read again)" : "Orbit: cancel not confirmed, the rest matched afterwards (read again)")
+        : (teil ? "Orbit matched " + gematcht + " of " + v.einsatz + " € @ " + schnitt + " (rest cancelled)" : undefined) });
   } catch (e) {
-    return await fertig({ status: "uncertain", reason: "Orbit: " + String((e && e.message) || e).slice(0, 100) + " — check Orbit (order " + ticket + ")", ticket, odds: oddsMarkt });
+    return await fertig({ status: "uncertain", reason: "Orbit: " + String((e && e.message) || e).slice(0, 100) + " — check Orbit (order " + ticket + ")", ticket, odds: oddsMarkt, nachlesen: spaeter(ticket, grenze) });
   }
+}
+
+// ---- Spaeter nachlesen (04.11.2026) ------------------------------------------------------------------------------------------------------------
+// Die Engine ruft das im Status-Takt hoechstens einmal je Minute (engine-sw.js nachlesenAlle). Unsichere Orders mit Merker werden bis 3 h nach dem
+// Senden in der Liste der laufenden Wetten gesucht. Endgueltig ist nur eine Zeile ohne Rest, BACK, dieselbe Auswahl: gematcht > 0 = placed mit dem
+// echten Betrag, sonst failed. Fehlt die Zeile, bleibt es unsicher (abgerechnet oder gestrichen ist von hier nicht zu unterscheiden), ebenso ein
+// Schnitt unter dem Limit. Benutzt nur einen schon offenen Orbit-Tab. Rueckgabe [{ proposalId, res }]: alle Klaerungen der letzten 24 h, nicht nur
+// die neuen — die Engine berichtigt nur Quittungen, die noch uncertain sind; ging ein Schreiben verloren, klappt es beim naechsten Takt.
+export async function nachlesen(ctx) {
+  if (!ctx || typeof ctx.storageGet !== "function") return [];
+  let m; try { m = (await ctx.storageGet(MERKER)) || {}; } catch (_) { return []; }
+  const jetzt = Date.now(), aus = [], offen = [];
+  for (const nr of Object.keys(m)) {
+    const e = m[nr], res = e && e.res;
+    if (!e || e.stand !== "fertig" || !res) continue;
+    if (res.nachgelesen === true && res.pid && jetzt - (Number(e.ts) || 0) < KORREKTUR_GILT_MS) aus.push({ proposalId: res.pid, res });
+    else if (res.status === "uncertain" && res.nachlesen && res.nachlesen.ticket && jetzt < Number(res.nachlesen.bis)) offen.push(nr);
+  }
+  if (!offen.length) return aus;
+  const tab = (await offeneTabs())[0];
+  if (!tab || (await kernBereit(tab.id))) return aus;
+  for (const nr of offen) {
+    const n = m[nr].res.nachlesen, ticket = String(n.ticket);
+    const o = await imTab(tab.id, { art: "offen", marketId: n.marketId, offerId: ticket }, OFFEN_MS);
+    if (!o || !o.ok || !Array.isArray(o.wetten)) continue;
+    const z = o.wetten.filter((x) => x && String(x.offerId) === ticket);
+    if (z.length !== 1) continue;
+    const w = z[0];
+    if (String(w.side) !== "BACK" || String(w.selectionId) !== String(n.selectionId) || Number(w.sizeRemaining) > 0) continue;
+    const gematcht = r2(w.sizeMatched), schnitt = Number(w.averagePrice) > 1 ? Number(w.averagePrice) : Number(n.grenze);
+    if (gematcht > 0 && !(schnitt >= Number(n.grenze) - 1e-6)) continue;
+    const res = gematcht > 0
+      ? { status: "placed", stake: gematcht, odds: effektiv(schnitt, 10000), ticket, verified: true, rawOdds: schnitt, cur: fremdWaehrung(w), note: "read again later: Orbit matched " + gematcht + " of " + n.wunsch + " € @ " + schnitt, nachgelesen: true, pid: n.pid }
+      : { status: "failed", reason: "Orbit: read again later — nothing matched and the order is no longer open, no bet", ticket, nachgelesen: true, pid: n.pid };
+    await merkeFertig(ctx, nr, res);
+    ctx.log(`orbitxch: nachgelesen · Order ${ticket} · ${gematcht > 0 ? gematcht + " von " + n.wunsch + " € gematcht" : "nichts gematcht"}`);
+    aus.push({ proposalId: n.pid, res });
+  }
+  return aus;
 }
 // res.cur nur, wenn die Wette NICHT in Euro lief (engine-core echterEinsatz): vor dem Senden geprueft, die Zeile der Wette hat das letzte Wort.
 function fremdWaehrung(w) { const c = w && typeof w.currency === "string" ? w.currency.toUpperCase() : ""; return c && c !== "EUR" ? c : undefined; }
