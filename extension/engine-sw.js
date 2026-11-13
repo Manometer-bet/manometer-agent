@@ -340,8 +340,46 @@ async function kontoLesenAlle(b, loc, sofort) {
     await store.set("engineKontoStand", stand);
   } finally { _kontoLauf = false; }
 }
+// Eine unsichere Wette kann sich später klären (Orbit: Storno abgelehnt, der Rest wurde
+// danach doch angenommen). Adapter mit nachlesen(ctx) liefern [{ proposalId, res }]; eine Quittung, die noch uncertain ist, wird an Ort und Stelle
+// berichtigt und geht mit dem nächsten Status nach oben (die Bridge zieht placed vor uncertain vor). Höchstens einmal je Minute, nur angehakte Bücher.
+const NACHLESEN_TAKT_MS = 60000;
+let _nachLauf = false, _nachTs = 0;
+async function nachlesenAlle(b, loc) {
+  if (_nachLauf || Date.now() - _nachTs < NACHLESEN_TAKT_MS) return;
+  _nachLauf = true; _nachTs = Date.now();
+  try {
+    const korr = [];
+    for (const k of (loc.books || [])) {
+      const ad = ADAPTERS[k];
+      if (!ad || typeof ad.nachlesen !== "function") continue;
+      try { const r = await ad.nachlesen(Object.assign({}, ctx, { venue: k })); if (Array.isArray(r)) korr.push(...r); } catch (_) {}
+    }
+    if (!korr.length) return;
+    // Lesen, ändern, schreiben ohne await dazwischen: der Haupt-Takt hängt in derselben Liste Quittungen an.
+    const hist = (await store.get("engineReceipts", [])) || [], neu = [];
+    for (const kk of korr) {
+      const r = kk && hist.find((x) => x && x.proposalId === kk.proposalId && x.status === "uncertain");
+      if (!r) continue;
+      const aenderung = CORE.nachgelesen(r, kk.res, Date.now());
+      if (!aenderung.status) continue;
+      const vorher = r.stakeEur;
+      Object.assign(r, aenderung);
+      neu.push({ r, vorher });
+    }
+    if (!neu.length) return;
+    await store.set("engineReceipts", hist);
+    for (const { r, vorher } of neu) {
+      if (r.status === "failed") await lockRelease(r.proposalId, "read again: failed");
+      else await lockSet(r.proposalId, r.status, { book: r.book, eventId: String(r.bookEventId || ""), stake: r.stakeEur });
+      await log(`read again: ${r.mkt} ${r.sel} @ ${r.book} · ticket ${r.ticket || "?"} · was uncertain (${vorher} €) → ${r.status}${r.status === "placed" ? " " + r.stakeEur + " €" + (r.fillOdds ? " @ " + r.fillOdds : "") : ""}`);
+    }
+    statusNebenbei(b, true);
+  } finally { _nachLauf = false; }
+}
 function nebenarbeit(b, loc) {
   kontoLesenAlle(b, loc).catch(() => {});
+  nachlesenAlle(b, loc).catch(() => {});
   if (Date.now() - _cfgHolTs >= VORGABEN_TAKT_MS) vorgabenHolen(b).catch(() => {});
   // TrustDice-Keepalive (Operator-Parität): haelt die Session warm, unabhaengig von Proposals.
   if (Date.now() - _nebenTs >= VORGABEN_TAKT_MS) {

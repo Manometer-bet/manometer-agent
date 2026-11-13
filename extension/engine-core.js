@@ -242,6 +242,29 @@ export function echterEinsatz(wunsch, res) {
   const stake = Math.round(got * 100) / 100;
   return { stake, wantStake: want, partial: stake < want - 0.01 };
 }
+// eine unsichere Quittung nachträglich berichtigen, wenn der Adapter die Wette später
+// endgültig gelesen hat (nachlesen). Geändert wird nur, was das Ergebnis betrifft; Zeitpunkt, Vorschlag und Latenz bleiben. Der Einsatz folgt
+// derselben Regel wie beim Setzen, gemessen am ursprünglichen Wunsch. Nur aus uncertain; alles andere bleibt, wie es ist.
+export function nachgelesen(r, res, nowTs) {
+  if (!r || r.status !== "uncertain") return {};
+  const status = receiptStatus(res, false);
+  if (status === "uncertain") return {};
+  const want = Number(r.wantStake) > 0 ? Number(r.wantStake) : (Number(r.stakeEur) || 0);
+  const echt = status === "placed" ? echterEinsatz(want, res) : null;
+  return {
+    status,
+    stakeEur: echt ? echt.stake : want,
+    wantStake: echt && echt.partial ? echt.wantStake : undefined,
+    partial: echt && echt.partial ? true : undefined,
+    fillOdds: res && res.odds != null ? res.odds : (status === "placed" ? r.fillOdds : null),
+    ticket: (res && (res.ticket || res.orderId)) || r.ticket || null,
+    verified: res && res.verified != null ? !!res.verified : null,
+    note: (res && res.note) || null,
+    cur: (res && res.cur) || null,
+    reason: status === "placed" ? null : ((res && (res.reason || res.error)) || r.reason || null),
+    nachgelesen: Number(nowTs) || 0,
+  };
+}
 export function buildReceipt(p, res, meta) {
   const m = meta || {};
   const status = m.status || receiptStatus(res, m.threw);
