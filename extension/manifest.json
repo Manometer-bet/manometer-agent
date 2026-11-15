@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Manometer Agent",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "Places signed bet proposals on your own bookmaker accounts. No odds model, no signal source.",
   "permissions": [
     "storage",

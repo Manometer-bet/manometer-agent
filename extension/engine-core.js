@@ -18,6 +18,16 @@ export const ENGINE_MARKETS = {
   // 04.10.2026 (1.2.64): Basketball — Sieger ueber das ganze Spiel INKLUSIVE Verlaengerung (2-Weg, kein draw). Schluessel wie
   // in der Feed-API des Operators (feed-core.js: fb | basket | tennis | cs2).
   basket: { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  // 1.2.89 (15.11.2026): die weiteren Drop-Sportarten, Sieger ueber das ganze Spiel wie die Pinnacle-Moneyline (2-Weg inklusive
+  // Verlaengerung / Penaltys / Extra-Innings / Tie-Break). Welcher Markt das beim Buch ist, prueft der Adapter (sein sports nennt sie).
+  tennis:     { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  icehockey:  { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  volleyball: { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  amfootball: { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  baseball:   { ml: { scopes: ["match"], sels: ["home", "away"] } },
+  // Handball: Heim oder Gast im 1X2 der REGULAEREN Spielzeit (der Markt beim Buch listet ein Remis; ein Remis verliert). Pinnacle fuehrt
+  // Draw No Bet; der Operator rechnet die Fair schon auf 3-Weg um. Kein draw: dafuer gibt es keine Fair.
+  handball:   { ml: { scopes: ["match"], sels: ["home", "away"] } },
 };
 
 // Setzt dieser Buch-Adapter die Sportart des Vorschlags? Ein Adapter nennt seine Sportarten selbst (export const sports =
