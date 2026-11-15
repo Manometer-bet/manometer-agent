@@ -41,7 +41,11 @@ const KONTO_FRIST_MS = 6000;                                   // laenger wartet
 const SEITEN = { home: 1, draw: 1, away: 1 };
 
 export const id = BUCH;
-export const sports = { fb: true };                            // engine-sw.js prueft das vor place; Fussball wie background.js boMenu
+// 1.2.89 (15.11.2026, Drop-Sportarten in die Setz-Agents): dazu die Sportarten, die der SW-Feed des Operators fuehrt (Moneyline ueber das ganze
+// Spiel; Handball 1X2 regulaer, die anderen 2-Weg ohne Draw — content/betonline-place.js SPORT_FORM). Nur vor dem Anpfiff. Den Schein selbst
+// konnte niemand im Browser pruefen (betonline.ag ist fuer den Browser-Zugriff gesperrt): add-line muss Spiel, Mannschaft und „Money Line“ nennen.
+export const sports = { fb: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, handball: true };   // engine-sw.js prueft das vor place
+const LIGA_SPORT = { fb: "soccer", basket: "basketball", tennis: "tennis", icehockey: "hockey", volleyball: "volleyball", amfootball: "football", handball: "handball" };   // Feed-Name → Buch-Pfad der Liga
 export const hosts = { site: SEITE, offering: "https://api-offering.betonline.ag", betslip: "https://api-betslip.betonline.ag" };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -101,13 +105,13 @@ export async function balance() {
   return { saldo, bonus: zahl(r.bonus) || 0, hold: zahl(r.hold) || 0, cur: "USD", ts: Date.now() };
 }
 
-// PURE: bookRef.url → { sport, league, scheduleText|null } | null. Nur die Form der Menue-Adressen des Buchs, nur Fussball
-// (background.js boMenu: parts[1] === "soccer"). Die Teile gehen als Felder in den Abruf des Angebots, nie in eine Adresse.
-export function slugAus(url) {
+// PURE: bookRef.url → { sport, league, scheduleText|null } | null. Nur die Form der Menue-Adressen des Buchs. Die Teile gehen als Felder in den
+// Abruf des Angebots, nie in eine Adresse. feed (15.11.2026): die Sportart des Vorschlags — der Pfad der Liga muss genau ihrer sein (ohne Angabe Fussball).
+export function slugAus(url, feed) {
   const m = /^https:\/\/www\.betonline\.ag\/sportsbook\/([^/?#]+)\/([^/?#]+)(?:\/([^/?#]+))?\/?$/.exec(String(url == null ? "" : url));
   if (!m) return null;
-  const teil = /^[a-z0-9][a-z0-9'._-]{0,100}$/i;
-  if (m[1] !== "soccer" || !teil.test(m[2]) || (m[3] != null && !teil.test(m[3]))) return null;
+  const teil = /^[a-z0-9][a-z0-9'._-]{0,100}$/i, soll = LIGA_SPORT[(feed == null || feed === "") ? "fb" : String(feed)];
+  if (!soll || m[1] !== soll || !teil.test(m[2]) || (m[3] != null && !teil.test(m[3]))) return null;
   return { sport: m[1], league: m[2], scheduleText: m[3] || null };
 }
 // Nummer je Vorschlag (fest, siehe Kopf). Das Ende der proposalId traegt Auswahl und Zeit und unterscheidet zwei Vorschlaege auch bei langer Kennung.
@@ -143,15 +147,16 @@ export async function place(p, stakeEur, ctx) {
   if (!p || typeof p !== "object") return { status: "blocked", reason: "betonline: no proposal" };
   if (p.mkt === "parlay") return { status: "blocked", reason: "betonline: parlays are not connected (single bets only)" };
   const feed = (p.sport == null || p.sport === "") ? "fb" : String(p.sport);
-  if (!Object.prototype.hasOwnProperty.call(sports, feed)) return { status: "blocked", reason: "betonline: sport " + feed + " is not connected (football only)" };
+  if (!Object.prototype.hasOwnProperty.call(sports, feed)) return { status: "blocked", reason: "betonline: sport " + feed + " is not connected" };
+  if (feed !== "fb" && p.sel === "draw") return { status: "blocked", reason: "betonline: no draw bets in " + feed + " (home or away only)" };
   if ((p.mkt || "ml") !== "ml" || (p.scope || "match") !== "match" || p.line != null) return { status: "blocked", reason: "betonline: market " + String(p.mkt) + " is not connected (match winner only)" };
   if (p.live === true || (p.eventIdentity && p.eventIdentity.live === true)) return { status: "blocked", reason: "betonline: live bets are not connected — pre-match only" };
   if (!Object.prototype.hasOwnProperty.call(SEITEN, String(p.sel))) return { status: "blocked", reason: "betonline: invalid selection " + String(p.sel) };
   const ref = p.bookRef || {}, eventId = String(ref.eventId == null ? "" : ref.eventId), rotation = String(ref.outcomeId == null ? "" : ref.outcomeId);
   if (!/^\d{4,12}$/.test(eventId)) return { status: "blocked", reason: "betonline: bookRef.eventId missing (GameId of the book)" };
   if (!/^\d{1,12}$/.test(rotation)) return { status: "blocked", reason: "betonline: bookRef.outcomeId missing (without the exact rotation number of the operator nothing is placed)" };
-  const slug = slugAus(ref.url);
-  if (!slug) return { status: "blocked", reason: "betonline: bookRef.url missing or not a football league address of the book (the fresh price cannot be read without it)" };
+  const slug = slugAus(ref.url, feed);
+  if (!slug) return { status: "blocked", reason: "betonline: bookRef.url missing or not a " + (feed === "fb" ? "football" : feed) + " league address of the book (the fresh price cannot be read without it)" };
   if (!p.proposalId || typeof p.proposalId !== "string") return { status: "blocked", reason: "betonline: proposalId missing (order number)" };
   const minOdds = Number(p.minOdds);
   if (!(minOdds > 1) || !isFinite(minOdds)) return { status: "blocked", reason: "betonline: minOdds missing" };

@@ -104,7 +104,26 @@ export function erlaubterBetrag(grund, wunsch) {
   const x = Math.floor(Number(m[1].replace(",", ".")) * 100 + 1e-6) / 100;
   return x >= KOMBI_MIN_EINSATZ && x < wunsch ? x : 0;
 }
-export const SPORT_ZIEL = { basket: { alias: "basketball", kind: 1, faktoren: ["921", "923"], ohne: 922 } };
+// 1.2.89 (15.11.2026, Betreiber: „Ich würde gerne Handball und Volleyball Drops auch durchgehend setzen können … Am besten überall in den
+// Setz-Agenten.“): dieselben Sieger-Faktoren wie das eigene Konto (background.js FONBET_SIEGER, gemessen 19.10.). Eishockey 7035 / 7036 =
+// 2-Weg inklusive Verlaengerung und Penaltys (921–923 sind dort der 3-Weg der regulaeren Zeit). Handball umgekehrt: Heim/Gast im 1X2 der
+// regulaeren Zeit, der Markt MUSS ein Remis listen (mit) — sonst waere es eine andere Wette.
+export const SPORT_ZIEL = {
+  basket:     { alias: "basketball",  kind: 1, faktoren: ["921", "923"], ohne: 922 },
+  tennis:     { alias: "tennis",      kind: 1, faktoren: ["921", "923"], ohne: 922 },
+  volleyball: { alias: "volleyball",  kind: 1, faktoren: ["921", "923"], ohne: 922 },
+  amfootball: { alias: "am-football", kind: 1, faktoren: ["921", "923"], ohne: 922 },
+  baseball:   { alias: "baseball",    kind: 1, faktoren: ["921", "923"], ohne: 922 },
+  icehockey:  { alias: "hockey",      kind: 1, faktoren: ["7035", "7036"], ohne: null },
+  handball:   { alias: "handball",    kind: 1, faktoren: ["921", "923"], mit: 922 },
+};
+// Faktoren ausserhalb von 921–923, die ein Sieger-Markt nutzt (Eishockey) — Preis und Sperre je Faktor am Katalog-Eintrag (zusatzF).
+export const ZUSATZ_FAKTOREN = [7035, 7036];
+export function zusatzFaktoren(f, gesperrt) {
+  const z = {};
+  for (const n of ZUSATZ_FAKTOREN) if (Number(f[n]) > 1) z[String(n)] = { v: Number(f[n]), gesperrt: !!gesperrt(n) };
+  return z;
+}
 // Wurzel-Sportart eines Liga-Knotens (alias der obersten Ebene, z. B. "basketball") — fuer den Katalog beider Adapter.
 export function sportWurzel(d) {
   const byId = {}; ((d && d.sports) || []).forEach((s) => { if (s && s.id != null) byId[s.id] = s; });
@@ -119,19 +138,22 @@ export function sportZiel(rec, p) {
   const nr = String((p.bookRef && p.bookRef.outcomeId != null) ? p.bookRef.outcomeId : "");
   if (S.faktoren.indexOf(nr) < 0) return { error: "proposal without the exact selection (factor " + S.faktoren.join(" / ") + ") — not placed" };
   if (rec.sportAlias !== S.alias || rec.kind !== S.kind) return { error: "event is not a " + S.alias + " match at the book" };
-  if (rec.hatRemis === true) return { error: "the winner market lists a draw (3-way, regular time) — a different bet" };
+  if (S.ohne != null && rec.hatRemis === true) return { error: "the winner market lists a draw (3-way, regular time) — a different bet" };
+  if (S.mit != null && !(rec.hatRemis === true && rec.ml && Number(rec.ml.draw) > 1)) return { error: "the market lists no open draw — not the 1X2 of regular time, a different bet" };
   if ((p.live === true) !== (rec.live === true)) return { error: p.live === true ? "game is not live at the book — live order only in a running game" : "game is already live at the book — pre-match only" };
   const seite = nr === S.faktoren[0] ? "home" : "away";
-  const o = rec.ml ? Number(rec.ml[seite]) || 0 : 0;
+  let o = 0, zu = false;
+  if (S.faktoren[0] === "921") { o = rec.ml ? Number(rec.ml[seite]) || 0 : 0; zu = !!(rec.gesperrt && rec.gesperrt[seite]); }
+  else { const z = rec.zusatzF && rec.zusatzF[nr]; o = z ? Number(z.v) || 0 : 0; zu = !!(z && z.gesperrt); }
   if (!(o > 1)) return { error: "outcome not offered" };
-  if (rec.gesperrt && rec.gesperrt[seite]) return { error: "selection suspended right now (the price in the feed is frozen)" };
+  if (zu) return { error: "selection suspended right now (the price in the feed is frozen)" };
   return { eventId: rec.eventId, factor: Number(nr), odds: o, live: rec.live === true, score: rec.score || null };
 }
 
 export const id = "fonbet";
 export const hosts = { line: LINE_HOST, clients: CLIENTS_HOST, site: "https://fonbet001.com/" };
 // Sportarten, die dieser Adapter setzt (engine-core.js adapterSetzt). basket seit 1.2.64 — nur mit genauem Faktor (sportZiel).
-export const sports = { fb: true, cs2: true, basket: true };
+export const sports = { fb: true, cs2: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true, handball: true };   // 1.2.89: die weiteren Drop-Sportarten (SPORT_ZIEL)
 // 1.2.72 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi.
 export const kombi = true;
 
@@ -228,6 +250,7 @@ async function catalog(force) {
       gesperrt: { home: zus.gesperrt(ev.id, 921), draw: zus.gesperrt(ev.id, 922), away: zus.gesperrt(ev.id, 923) },
       // 1.2.64: Sportart, Art des Ereignisses und ob ein Remis-Faktor GELISTET ist (auch gesperrt) — fuer sportZiel
       sportAlias: wurzel(ev.sportId), kind: ev.kind, hatRemis: f[922] != null,
+      zusatzF: zusatzFaktoren(f, (n) => zus.gesperrt(ev.id, n)),   // 1.2.89: Eishockey 7035 / 7036
     });
   }
   _cat = { at: Date.now(), byId };

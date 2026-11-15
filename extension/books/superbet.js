@@ -54,6 +54,11 @@ async function waitComplete(tabId, ms) {
 export const id = "superbet";
 // 1.2.71 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi.
 export const kombi = true;
+// 1.2.89 (15.11.2026, Drop-Sportarten in die Setz-Agents): Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place). Fussball (und
+// cs2 wie bisher ohne eigene Liste — dort findet der Katalog nie ein Spiel) unveraendert; die weiteren nur vor dem Anpfiff, nur Sieger-Markt, nur
+// mit der Ausgangs-Nr. des Operators (content/superbet-place.js sbPlaceSieger, Markt je Sportart in content/superbet-kombi.js SIEGER).
+export const sports = { fb: true, cs2: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, handball: true };
+const SIEGER_SPORT = { basket: "basketball", tennis: "tennis", icehockey: "icehockey", volleyball: "volleyball", amfootball: "amfootball", handball: "handball" };   // Feed-Name → SIEGER
 export const hosts = { offer: SB_OFFER, site: SITE };
 
 export function arm() { /* nichts vorzuwärmen — Session lebt im superbet.gr-Tab */ }
@@ -147,6 +152,7 @@ async function ensureTab(ctx) {
 
 export async function place(p, stakeEur, ctx) {
   if (p && p.mkt === "parlay") return await placeKombi(p, stakeEur, ctx);
+  if (p && p.sport != null && p.sport !== "" && p.sport !== "fb" && p.sport !== "cs2") return await placeSieger(p, stakeEur, ctx);
   const tip = { home: "1", draw: "X", away: "2" }[p.sel];
   if (!tip) return { status: "blocked", reason: "superbet: ungültige Auswahl " + String(p.sel) };
   if ((p.mkt || "ml") !== "ml") return { status: "blocked", reason: "superbet: Markt " + String(p.mkt) + " nicht unterstützt" };
@@ -183,6 +189,35 @@ export async function place(p, stakeEur, ctx) {
   const r = await sendTab(tabId, { cmd: "sbPlace", item, total: stakeEur, minOdds: p.minOdds, ident: { eventId: String(rec.eventId), betradarId: rec.betradarId } });
   ctx.log(`superbet: answer after ${Date.now() - _t0} ms · ${r && r.status ? r.status : "?"}${r && r.ticket ? " · Ticket " + r.ticket : ""}${r && r.reason ? " · " + String(r.reason).slice(0, 220) : ""}`);
   if (r && r.error && !r.status) return { status: "uncertain", reason: "superbet: keine Antwort vom Tab (" + r.error + ") — im Konto prüfen", odds: u.price };
+  return r;
+}
+
+// ---- 1.2.89 (15.11.2026) — SIEGER-MARKT DER WEITEREN SPORTARTEN ----------------------------------------------------------------------
+// Vorschlag: bookRef.eventId (Superbet event_id), bookRef.outcomeId (Ausgangs-Nr. aus dem Katalog des Operators), sel home | away in BUCH-Sicht.
+// Das frische Angebot liest und prueft das Setz-Script im Tab (dieselbe Pruefung wie ein Kombi-Bein) — hier wird nichts gesucht und nichts gedreht.
+async function placeSieger(p, stakeEur, ctx) {
+  const sport = SIEGER_SPORT[String(p.sport)];
+  if (!sport) return { status: "blocked", reason: "superbet: sport " + String(p.sport) + " is not connected" };
+  if (p.live === true || (p.eventIdentity && p.eventIdentity.live === true)) return { status: "blocked", reason: "superbet: live " + p.sport + " is not connected — pre-match only" };
+  if ((p.mkt || "ml") !== "ml" || (p.scope || "match") !== "match" || p.line != null) return { status: "blocked", reason: "superbet: market " + String(p.mkt) + " is not connected in " + p.sport + " (match winner only)" };
+  const tip = { home: "1", away: "2" }[p.sel];
+  if (!tip) return { status: "blocked", reason: "superbet: invalid selection " + String(p.sel) + " in " + p.sport + " (home or away only)" };
+  const eventId = String((p.bookRef && p.bookRef.eventId) == null ? "" : p.bookRef.eventId), nr = String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId);
+  if (!/^\d{4,12}$/.test(eventId)) return { status: "blocked", reason: "superbet: bookRef.eventId missing" };
+  if (!/^\d{1,12}$/.test(nr)) return { status: "blocked", reason: "superbet: bookRef.outcomeId missing (without the exact outcome number of the operator nothing is placed)" };
+  if (!(Number(p.minOdds) > 1)) return { status: "blocked", reason: "superbet: minOdds fehlt" };
+  const einsatz = Math.round(Number(stakeEur) * 100) / 100;
+  if (!(einsatz >= KOMBI_MIN_EINSATZ) || einsatz > KOMBI_MAX_EINSATZ) return { status: "blocked", reason: "superbet: Einsatz " + einsatz + " ausserhalb " + KOMBI_MIN_EINSATZ + "-" + KOMBI_MAX_EINSATZ };
+  const tabId = await ensureTab(ctx);
+  if (tabId == null) return { status: "blocked", reason: "superbet: kein superbet.gr-Tab verfügbar (einloggen + Tab offen lassen)" };
+  const nichtBereit = await kombiBereit(tabId);
+  if (nichtBereit) return { status: "blocked", reason: "superbet: " + nichtBereit + " — superbet.gr-Tab neu laden" };
+  ctx.log(`superbet: placing ${p.sport} winner ${p.sel} on event ${eventId} (outcome ${nr}) · ${einsatz} € @ ≥${p.minOdds}`);
+  const _t0 = Date.now();
+  const r = await sendTab(tabId, { cmd: "sbPlaceSieger", eventId, sport, tip, outcomeId: nr, total: einsatz, minOdds: Number(p.minOdds) });
+  ctx.log(`superbet: answer after ${Date.now() - _t0} ms · ${r && r.status ? r.status : "?"}${r && r.ticket ? " · Ticket " + r.ticket : ""}${r && r.reason ? " · " + String(r.reason).slice(0, 220) : ""}`);
+  if (r && r.error && !r.status && /Receiving end does not exist|Could not establish connection/i.test(String(r.error))) return { status: "blocked", reason: "superbet: Tab nicht erreichbar (Auftrag kam nicht an)" };
+  if (r && r.error && !r.status) return { status: "uncertain", reason: "superbet: keine Antwort vom Tab (" + r.error + ") — im Konto prüfen" };
   return r;
 }
 

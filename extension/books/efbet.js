@@ -36,6 +36,14 @@ const AUSWAHL_FORM = /^(\d{1,15}):(W1|X|W2)$/;                  // bookRef.outco
 const SPORT = {
   fb: { tab: "soccer", sel: { home: 1, draw: 1, away: 1 }, arten: { W1: 1, X: 1, W2: 1 } },
   basket: { tab: "basketball", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  // 1.2.89 (15.11.2026): die weiteren Drop-Sportarten; der Markt je Sportart steht im Tab-Script (content/efbet-place.js SIEGER).
+  // Handball: 1X2 der regulaeren Zeit, gesetzt wird nur W1 oder W2 — X gibt es hier nicht (dafuer hat der Operator keine Fair).
+  tennis: { tab: "tennis", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  icehockey: { tab: "icehockey", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  volleyball: { tab: "volleyball", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  amfootball: { tab: "amfootball", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  baseball: { tab: "baseball", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
+  handball: { tab: "handball", sel: { home: 1, away: 1 }, arten: { W1: 1, W2: 1 } },
 };
 const HINWEIS = "sign in at efbet.gr and keep the tab open";
 const NACHFRAGEN_MAX = 70;                                      // Obergrenze der Nachfragen; die Frist selbst haelt das Tab-Script (75 s)
@@ -120,7 +128,7 @@ function saldoText() {
 }
 
 export const id = "efbet";
-export const sports = { fb: true, basket: true };                // Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place)
+export const sports = { fb: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true, handball: true };   // Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place); 1.2.89: + Drop-Sportarten
 // 1.2.69 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi.
 export const kombi = true;
 export const hosts = { site: SEITE, api: "wss://eu-swarm-reverse.betconstruct.com (nur ueber den Socket der Seite)" };

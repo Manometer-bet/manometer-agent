@@ -22,7 +22,7 @@
 
 const ORIGIN = "https://orbitxch.com", ORIGIN_WWW = "https://www.orbitxch.com";
 const TAB_MUSTER = [ORIGIN + "/*", ORIGIN_WWW + "/*"];
-const SCRIPT = "content/orbitxch-place.js", KERN = "orbit-back-2";    // KERN wie im Script (1.2.88: -2 = Fussball und Basketball)
+const SCRIPT = "content/orbitxch-place.js", KERN = "orbit-back-3";    // KERN wie im Script (1.2.88: -2 = Fussball und Basketball; 1.2.89: -3 = + weitere 2-Weg-Sportarten)
 const PROVISION = 0.03;                                                // Orbit: 3 % auf den Netto-Gewinn (wie ORBIT_PROVISION im Operator)
 const MIN_EINSATZ = 7, MAX_EINSATZ = 200;                              // Orbit minBetSize 7 €; 200 € = Grenze des Auftragswegs beim Operator
 const BACK_FRIST_MS = 4000, LIVE_PUFFER_MS = 2500, LIVE_WARTEN_MAX_MS = 15000;   // so lange darf die Order matchen (ORBIT_BACK_FRIST_MS usw.)
@@ -32,7 +32,7 @@ const NACHLESEN_MS = 20000, NACHLESEN_TAKT_MS = 2000, SPAETER_BIS_MS = 3 * 3600e
 const MERKER = "orbitAuftraege", MERKER_MAX = 300, MERKER_TAGE_MS = 7 * 24 * 3600e3;
 
 export const id = "orbitxch";
-export const sports = { fb: true, basket: true };   // 1.2.88: Basketball dazu (nur vor dem Anpfiff, siehe vorschlagLesen)
+export const sports = { fb: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true };   // 1.2.88: Basketball, 1.2.89: die weiteren 2-Weg-Drop-Sportarten (nur vor dem Anpfiff, siehe vorschlagLesen); Handball fuehrt Orbit nicht
 export const hosts = { orbit: { origin: ORIGIN, www: ORIGIN_WWW } };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,15 +146,15 @@ const AUSWAHL_FORM = /^(1\.\d{5,12}):(\d{1,12})$/;
 function vorschlagLesen(p, stakeEur) {
   const nein = (fehler) => ({ fehler });
   const feed = (p.sport == null || p.sport === "") ? "fb" : String(p.sport);
-  if (!sports[feed]) return nein("Orbit: sport " + feed + " is not connected (football and basketball only)");
+  if (!sports[feed]) return nein("Orbit: sport " + feed + " is not connected (football, basketball, tennis, ice hockey, volleyball, American football, baseball)");
   const live = p.live === true || !!(p.eventIdentity && p.eventIdentity.live === true);
-  if (feed === "basket" && live) return nein("Orbit: basketball is connected before tip-off only");
+  if (feed !== "fb" && live) return nein(feed === "basket" ? "Orbit: basketball is connected before tip-off only" : "Orbit: " + feed + " is connected before the start only");
   if ((p.mkt || "ml") !== "ml") return nein("Orbit: market " + String(p.mkt) + " is not connected (match winner only)");
   if ((p.scope || "match") !== "match") return nein("Orbit: scope " + String(p.scope) + " is not connected (whole match only)");
   if (p.line != null || p.legs != null) return nein("Orbit: lines and parlays are not connected");
   if (p.side != null && String(p.side).toUpperCase() !== "BACK") return nein("Orbit: only BACK is connected");
   if (!(p.sel === "home" || p.sel === "draw" || p.sel === "away")) return nein("Orbit: selection side " + String(p.sel).slice(0, 8) + " unknown");
-  if (feed === "basket" && p.sel === "draw") return nein("Orbit: basketball has no draw (home or away only)");
+  if (feed !== "fb" && p.sel === "draw") return nein("Orbit: " + (feed === "basket" ? "basketball" : feed) + " has no draw (home or away only)");
   const eventId = String((p.bookRef && p.bookRef.eventId) == null ? "" : p.bookRef.eventId);
   if (!/^\d{5,15}$/.test(eventId)) return nein("Orbit: bookRef.eventId missing");
   const m = AUSWAHL_FORM.exec(String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId));

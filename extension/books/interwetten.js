@@ -14,7 +14,7 @@ import { imTab, alsJson, r2 } from "./konto-lesen.js";
 const ORIGIN = "https://www.interwetten.gr";
 
 export const id = "interwetten";
-export const sports = { fb: true, basket: true };
+export const sports = { fb: true, basket: true, tennis: true, volleyball: true, baseball: true, handball: true };   // 1.2.89: + Drop-Sportarten, die Interwetten fuehrt (collectors/interwetten.js SPORT); Auswahl immer genau vom Operator
 export const kombi = true;   // 1.2.79: Kombis ueber content/interwetten-place.js iwKombi → IWSETZEN.setzenKombi
 export const hosts = { interwetten: { origin: ORIGIN } };
 
@@ -111,7 +111,7 @@ async function placeKombi(p, stakeEur, ctx) {
 export async function place(p, stakeEur, ctx) {
   if (p.mkt === "parlay") return await placeKombi(p, stakeEur, ctx);
   const feed = (p.sport == null || p.sport === "") ? "fb" : String(p.sport);
-  if (!sports[feed]) return { status: "blocked", reason: "interwetten: sport " + feed + " is not connected (football, basketball)" };
+  if (!sports[feed]) return { status: "blocked", reason: "interwetten: sport " + feed + " is not connected (football, basketball, tennis, volleyball, baseball, handball)" };
   if (p.mkt && p.mkt !== "ml") return { status: "blocked", reason: "interwetten: market " + String(p.mkt) + " is not connected (match winner only)" };
   const ref = String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId), m = /^(\d{4,13})\.(\d{4,13})\.(\d{4,13})$/.exec(ref);
   if (!m) return { status: "blocked", reason: "interwetten: bookRef.outcomeId missing (without the exact selection of the operator nothing is placed)" };

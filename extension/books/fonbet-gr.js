@@ -15,7 +15,7 @@
 // Er ist 1:1 vom produktiv laufenden .com-Pfad übernommen — vor dem ersten scharfen Einsatz bitte
 // eine kleine Testwette. Fonbet GR meldet in betSlipInfo einen Mindesteinsatz von 0,32 (sums.min).
 "use strict";
-import { couponOutcome, erlaubterBetrag, harvestAuth, feedZusatz, SPORT_ZIEL, sportWurzel, sportZiel, kombiSetzen, fbKontoLesen } from "./fonbet.js";   // geteilte Logik: Coupon-Verdikt, Page-Read der Session, Stand + Sperren, Sportarten (1.2.64), Kombiwette (1.2.72)
+import { couponOutcome, erlaubterBetrag, harvestAuth, feedZusatz, SPORT_ZIEL, sportWurzel, sportZiel, zusatzFaktoren, kombiSetzen, fbKontoLesen } from "./fonbet.js";   // geteilte Logik: Coupon-Verdikt, Page-Read der Session, Stand + Sperren, Sportarten (1.2.64), Kombiwette (1.2.72)
 
 // _auth aus Sniff ODER (Fallback) direkt aus dem fonbet.gr-Tab lesen — behebt „keine Session" trotz Login.
 async function ensureAuth(ctx) {
@@ -53,7 +53,7 @@ async function fetchT(url, opts, ms) {
 export const id = "fonbetgr";
 export const hosts = { line: LINE_HOSTS, clients: CLIENTS_HOSTS, site: "https://fonbet.gr/" };
 // Sportarten, die dieser Adapter setzt (engine-core.js adapterSetzt). basket seit 1.2.64 — nur mit genauem Faktor (fonbet.js sportZiel).
-export const sports = { fb: true, cs2: true, basket: true };
+export const sports = { fb: true, cs2: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true, handball: true };   // 1.2.89: die weiteren Drop-Sportarten (fonbet.js SPORT_ZIEL)
 // 1.2.72 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi.
 export const kombi = true;
 
@@ -140,6 +140,7 @@ async function catalog(force) {
       gesperrt: { home: zus.gesperrt(ev.id, 921), draw: zus.gesperrt(ev.id, 922), away: zus.gesperrt(ev.id, 923) },
       // 1.2.64: Sportart, Art des Ereignisses und ob ein Remis-Faktor GELISTET ist (auch gesperrt) — fuer sportZiel
       sportAlias: wurzel(ev.sportId), kind: ev.kind, hatRemis: f[922] != null,
+      zusatzF: zusatzFaktoren(f, (n) => zus.gesperrt(ev.id, n)),   // 1.2.89: Eishockey 7035 / 7036
     });
   }
   _cat = { at: Date.now(), byId };

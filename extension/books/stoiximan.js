@@ -17,7 +17,7 @@ const preUrl  = (id) => `${ORIGIN}/match-odds/x/${id}/`;   // 26.09.: alt /sport
 export const id = "stoiximan";
 // Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place). basket seit 1.2.64 (04.10.2026): Sieger-Markt
 // „Winner" (H2HT) nur ueber die Wettschein-Schnittstelle und nur mit der genauen Auswahl-Nummer des Operators.
-export const sports = { fb: true, cs2: true, basket: true };
+export const sports = { fb: true, cs2: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true, handball: true };   // 1.2.89: wie Basketball nur ueber die Schnittstelle mit Auswahl-Nummer (content/stoiximan-place.js SIEGER)
 // 1.2.68 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi. Betreiber: „lasse uns Stück
 // für Stück die anderen Bookies anbinden, sodass man auch bei denen die Parlays setzen kann.“
 export const kombi = true;
@@ -192,7 +192,7 @@ export async function place(p, stakeEur, ctx) {
   const liveApi = p.live === true && (!p.sport || p.sport === "fb") && (!p.mkt || p.mkt === "ml");
   // Basketball (Sieger-Markt): immer ueber die Wettschein-Schnittstelle — kein Seitenwechsel noetig, vor dem Anpfiff wie live.
   // Ohne die genaue Auswahl-Nummer des Operators geht nichts an den Tab.
-  const nurApi = p.sport === "basket";
+  const nurApi = !!p.sport && p.sport !== "fb" && p.sport !== "cs2";   // 1.2.89: jede Sportart ausser Fussball/CS2 (Sieger-Markt mit Auswahl-Nummer)
   if (nurApi && !/^\d{1,20}$/.test(String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId))) return { status: "blocked", reason: "stoiximan: bookRef.outcomeId fehlt (ohne genaue Auswahl-Nummer des Operators wird nicht gesetzt)" };
   if (nurApi && p.sel !== "home" && p.sel !== "away") return { status: "blocked", reason: "stoiximan: ungueltige Auswahl " + String(p.sel) };
   let opened = (liveApi || nurApi) ? await liveTab(ctx) : null;

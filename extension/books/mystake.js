@@ -23,6 +23,11 @@ export const hosts = SITES;
 // gemessen (04.10.2026, mystake.com /sportsbookv4/); Jackbit laeuft auf demselben Sportsbook, ist aber ungeprueft und bleibt zu.
 export const kombi = true;
 const KOMBI_ORTE = { mystake: true };
+// Sportarten,
+// die dieser Adapter setzt (engine-sw.js prueft das vor place). Fussball und CS2 wie bisher; die weiteren nur vor dem Anpfiff, nur Sieger-Markt,
+// nur mit der genauen Auswahl-Nummer des Operators (content/mystake-place.js placeSieger, Markt je Sportart in content/mystake-kombi.js SIEGER_CFG).
+export const sports = { fb: true, cs2: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, handball: true };
+const SIEGER_SEITE = { basket: "basketball", tennis: "tennis", icehockey: "icehockey", volleyball: "volleyball", amfootball: "amfootball", handball: "handball" };   // Feed-Name → SIEGER_CFG
 
 // WICHTIG: mystake und jackbit teilen sich dieses Modul. Der Ausfuehrungsort kommt deshalb PRO
 // AUFRUF vom Kern (ctx.venue / status(venue)) — eine Modulvariable kann nur EINEN Wert halten und
@@ -188,8 +193,17 @@ async function placeKombi(p, stakeEur, ctx, brand) {
 // Darum: Quote und Markt zuerst ohne Tab lesen, eine Absage des Buchs gilt für diesen Vorschlag endgültig, und jeder Versuch mit Seite zählt für die Pause je Buch (seite: true, engine-sw.js).
 const MARKE_NR = { mystake: 28, jackbit: 94 }, LIVE_CACHE = "https://wss-eu-uk1.ws-amazon.com/api/cache/get?key=", DATA = "https://analytics-sp.googleserv.tech/api";
 // → { quote } | { fehlt: true } (nur live: Der Sieger-Markt ist gerade nicht im Angebot) | null (nicht sicher lesbar: Dann entscheidet wie bisher die Seite)
-async function quoteOhneSeite(brand, gameId, tip, live) {
+async function quoteOhneSeite(brand, gameId, tip, live, itemId) {
   try {
+    // 15.11.2026: weitere Sportarten — die Quote genau der Auswahl-Nummer des Auftrags (nur vor dem Spiel). Fehlt sie, entscheidet die Seite.
+    if (itemId) {
+      if (live) return null;
+      const r = await fetch(`${DATA}/prematch/getprematchgamefull/${MARKE_NR[brand]}/${gameId}`, { credentials: "omit" });
+      if (!r.ok) return null;
+      const o = await r.json(), g = typeof o.game === "string" ? JSON.parse(o.game) : o.game;
+      for (const mid in ((g && g.ev) || {})) { const z = g.ev[mid] && g.ev[mid][String(itemId)]; if (z) return !z.lock && Number(z.coef) > 1 ? { quote: Number(z.coef) } : null; }
+      return null;
+    }
     const res = await fetch(live ? LIVE_CACHE + "live/gamenew/" + gameId : `${DATA}/prematch/getprematchgamefull/${MARKE_NR[brand]}/${gameId}`, { credentials: "omit" });
     if (!res.ok) return null;
     if (live) {
@@ -215,6 +229,7 @@ export async function place(p, stakeEur, ctx) {
 async function placeEinzel(p, stakeEur, ctx, brand) {
   const gameId = String(p.bookRef.eventId);
   const isCs2 = p.sport === "cs2", live = p.live === true;
+  if (p.sport != null && p.sport !== "" && p.sport !== "fb" && !isCs2) return await placeSieger(p, stakeEur, ctx, brand, gameId);
   // Live ist nur der Fußball-Sieger gebaut (Markt 602, am echten Schein gemessen). Alles andere nicht auf gut Glück.
   if (live && (p.sport !== "fb" || p.mkt !== "ml")) return { status: "blocked", reason: brand + ": live " + p.sport + "/" + p.mkt + " is not connected", ohneSeite: true };
   const vorab = p.mkt === "ml" && !isCs2 && { home: "1", draw: "X", away: "2" }[p.sel] ? await quoteOhneSeite(brand, gameId, { home: "1", draw: "X", away: "2" }[p.sel], live) : null;
@@ -249,6 +264,40 @@ async function placeEinzel(p, stakeEur, ctx, brand) {
     await inject(tabId);
     for (let i = 0; i < 8; i++) { const pg = await sendTab(tabId, { cmd: "msPing" }); if (pg && pg.ok && pg.frame === "sportsbookv4") break; await sleep(700); }
     r = await sendTab(tabId, msg);
+  }
+  if (r && r.error && !r.status) return { status: "uncertain", reason: brand + ": no answer from the page (" + r.error + ") — check the bet history" };
+  if (r && r.ticketId) r.ticket = r.ticketId;
+  return r;
+}
+
+// 15.11.2026 — Sieger-Markt der weiteren Sportarten (Drop-Sportarten). Vorschlag: bookRef.eventId (gameId), bookRef.outcomeId (ItemID aus dem Katalog
+// des Operators), sel home | away in BUCH-Sicht. Nur vor dem Anpfiff, nur mkt ml / scope match, nie draw (Handball: 1X2 regulaer, gesetzt nur 1 oder 2).
+async function placeSieger(p, stakeEur, ctx, brand, gameId) {
+  const sport = SIEGER_SEITE[String(p.sport)];
+  const nein = (reason) => ({ status: "blocked", reason: brand + ": " + reason, ohneSeite: true });
+  if (!sport) return nein("sport " + String(p.sport) + " is not connected");
+  if (p.live === true || (p.eventIdentity && p.eventIdentity.live === true)) return nein("live " + p.sport + " is not connected — pre-match only");
+  if ((p.mkt || "ml") !== "ml" || (p.scope || "match") !== "match" || p.line != null) return nein("market " + String(p.mkt) + " is not connected in " + p.sport + " (match winner only)");
+  const tip = { home: "1", away: "2" }[p.sel];
+  if (!tip) return nein("invalid selection " + String(p.sel) + " in " + p.sport + " (home or away only)");
+  const itemId = String((p.bookRef && p.bookRef.outcomeId) == null ? "" : p.bookRef.outcomeId);
+  if (!/^\d{1,20}$/.test(itemId)) return nein("bookRef.outcomeId missing (without the exact selection number of the operator nothing is placed)");
+  if (!/^\d{4,12}$/.test(gameId)) return nein("bookRef.eventId missing");
+  const vorab = await quoteOhneSeite(brand, gameId, tip, false, itemId);
+  if (vorab && vorab.quote < Number(p.minOdds)) return { status: "blocked", reason: `Odds ${vorab.quote} below min ${p.minOdds}. Not placed.`, ohneSeite: true };
+  const opened = await openEvent(gameId, false, ctx, brand, false);
+  if (opened.error) return { status: "blocked", reason: brand + ": " + opened.error };
+  ctx.log(`${brand}: event ${gameId} open, placing ${p.sport} winner ${p.sel} (selection ${itemId}) · ${stakeEur} € @ ≥${p.minOdds}`);
+  const msg = { cmd: "msPlaceSieger", gameId, sport, tip, itemId, amount: stakeEur, minOdds: p.minOdds, amountEur: stakeEur };
+  const _t0 = Date.now();
+  let r = await sendTab(opened.tabId, msg);
+  ctx.log(`${brand}: answer after ${Date.now() - _t0} ms · ${r && r.status ? r.status : "?"}${r && r.ticketId ? " · Ticket " + r.ticketId : ""}${r && r.reason ? " · " + String(r.reason).slice(0, 220) : ""}`);
+  if (r && /NOT_?AUTHORIZ/i.test(String(r.reason || ""))) {
+    ctx.log(brand + ": widget reports NOT_AUTHORIZED — reloading the tab, one retry");
+    try { await new Promise((rs) => { try { chrome.tabs.reload(opened.tabId, {}, () => rs()); } catch (_) { rs(); } }); } catch (_) {}
+    await waitComplete(opened.tabId, 20000); await sleep(3000); await inject(opened.tabId);
+    for (let i = 0; i < 8; i++) { const pg = await sendTab(opened.tabId, { cmd: "msPing" }); if (pg && pg.ok && pg.frame === "sportsbookv4") break; await sleep(700); }
+    r = await sendTab(opened.tabId, msg);
   }
   if (r && r.error && !r.status) return { status: "uncertain", reason: brand + ": no answer from the page (" + r.error + ") — check the bet history" };
   if (r && r.ticketId) r.ticket = r.ticketId;

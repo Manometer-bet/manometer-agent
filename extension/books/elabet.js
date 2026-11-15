@@ -41,6 +41,14 @@ const MIN_EINSATZ = 0.5, MAX_EINSATZ = 1000;                   // Sicherheitsgre
 const SPORT = {
   fb: { tab: "soccer", sel: { home: 1, draw: 1, away: 1 } },
   basket: { tab: "basketball", sel: { home: 1, away: 1 } },
+  // 1.2.89 (15.11.2026): die weiteren Drop-Sportarten; der Markt je Sportart steht im Tab-Script (content/elabet-place.js SIEGER, dort
+  // weist Handball ein Remis selbst ab).
+  tennis: { tab: "tennis", sel: { home: 1, away: 1 } },
+  icehockey: { tab: "icehockey", sel: { home: 1, away: 1 } },
+  volleyball: { tab: "volleyball", sel: { home: 1, away: 1 } },
+  amfootball: { tab: "amfootball", sel: { home: 1, away: 1 } },
+  baseball: { tab: "baseball", sel: { home: 1, away: 1 } },
+  handball: { tab: "handball", sel: { home: 1, away: 1 } },
 };
 const HINWEIS = "sign in at elabet.gr and keep the sport page (elabet.gr/en/sport) open in a tab";
 const NACHFRAGEN_MAX = 40;                                     // Obergrenze der Nachfragen; die Frist selbst haelt das Tab-Script (60 s)
@@ -94,7 +102,7 @@ async function authLesen() {
 }
 
 export const id = "elabet";
-export const sports = { fb: true, basket: true };              // Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place)
+export const sports = { fb: true, basket: true, tennis: true, icehockey: true, volleyball: true, amfootball: true, baseball: true, handball: true };   // Sportarten, die dieser Adapter setzt (engine-sw.js prueft das vor place); 1.2.89: + Drop-Sportarten
 // 1.2.70 (05.10.2026): dieser Adapter setzt Kombiwetten (mkt "parlay") — engine-core.js adapterKombi.
 export const kombi = true;
 export const hosts = { site: SEITE, api: "https://*.biahosted.com" };
