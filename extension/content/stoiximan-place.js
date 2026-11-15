@@ -418,7 +418,34 @@
   // Seite des Buchs uebersetzt — das Buch kann die Mannschaften andersherum fuehren. Die Nummer muss frisch gelesen im
   // Sieger-Markt DIESES Spiels stehen; ihr Preis muss die Mindestquote halten. Ohne Nummer wird nicht gesetzt.
   // Nur ueber die Wettschein-Schnittstelle (kein Klick-Weg): derselbe Absende-Weg wie Fussball (_ueberSchein).
-  const SIEGER = { basket: { sportId: "BASK", typ: "H2HT", typeId: 155, name: "Basketball" } };
+  // 1.2.89 (15.11.2026): die weiteren Drop-Sportarten. Gemessen je Sportart an 3 Vorspielen (Markt-Art stabil): Volleyball H2HT #908,
+  // Tennis HTOH #160, Eishockey H2HT #3061 (inklusive Verlaengerung; MRES #1222 = 3-Weg regulaer, nie genommen), Am. Football H2HT #2441,
+  // Baseball HHTT #2187. Handball = MRES #775, das 1X2 der regulaeren Zeit: drei Auswahlen 1 / X / 2 (remis), gesetzt wird nur 1 oder 2.
+  const SIEGER = {
+    basket:     { sportId: "BASK", typ: "H2HT", typeId: 155,  name: "Basketball" },
+    volleyball: { sportId: "VOLL", typ: "H2HT", typeId: 908,  name: "Volleyball" },
+    tennis:     { sportId: "TENN", typ: "HTOH", typeId: 160,  name: "Tennis" },
+    icehockey:  { sportId: "ICEH", typ: "H2HT", typeId: 3061, name: "Ice hockey" },
+    amfootball: { sportId: "AMFO", typ: "H2HT", typeId: 2441, name: "American football" },
+    baseball:   { sportId: "BASE", typ: "HHTT", typeId: 2187, name: "Baseball" },
+    handball:   { sportId: "HAND", typ: "MRES", typeId: 775,  name: "Handball", remis: true },
+  };
+  // PURE: Auswahlen eines Sieger-Markts → { aus } | { err }. 2-Weg: genau zwei. remis (Handball): genau drei, eine davon „X“ — die geht
+  // NICHT in die Liste (fuer das Remis gibt es keine Fair; eine X-Nummer wird so nie gesetzt).
+  function _auswahlenAus(liste, S) {
+    const n = S.remis ? 3 : 2;
+    if (liste.length !== n) return { err: "Sieger-Markt hat nicht genau " + (n === 3 ? "drei" : "zwei") + " Auswahlen" };
+    const aus = {}; let remis = 0;
+    for (const x of liste) {
+      if (!x || x.id == null) return { err: "Auswahl ohne Nummer" };
+      if (!(Number(x.price) > 1)) return { err: "Auswahl ohne Quote (Markt gesperrt?)" };
+      if (S.remis && String(x.name || "").trim().toUpperCase() === "X") { remis++; continue; }
+      aus[String(x.id)] = { preis: Number(x.price), name: String(x.name || "") };
+    }
+    if (S.remis && remis !== 1) return { err: "1X2 ohne eindeutiges Remis — nicht der Markt der regulaeren Zeit" };
+    if (Object.keys(aus).length !== 2) return { err: "Sieger-Markt hat nicht genau zwei Auswahlen" };
+    return { aus };
+  }
   // PURE: alle Markt-Objekte eines Typs mit Auswahl-Liste, wo immer sie in der Antwort stehen (je Markt-Nummer einmal).
   function _maerkteTief(wurzel, typ) {
     const fund = new Map();
@@ -439,12 +466,9 @@
     if (ms.length !== 1) return { err: ms.length ? "mehrere Sieger-Maerkte" : "kein Sieger-Markt (" + S.typ + ") — gesperrt oder nicht angeboten" };
     const m = ms[0];
     if (Number(m.typeId) !== S.typeId) return { err: "Sieger-Markt mit unerwarteter Art (" + String(m.typeId) + ")" };
-    const sel = (m.selections || []).filter((x) => x && x.id != null);
-    if (sel.length !== 2 || (m.selections || []).length !== 2) return { err: "Sieger-Markt hat nicht genau zwei Auswahlen" };
-    const aus = {};
-    for (const x of sel) { if (!(Number(x.price) > 1)) return { err: "Auswahl ohne Quote (Markt gesperrt?)" }; aus[String(x.id)] = { preis: Number(x.price), name: String(x.name || "") }; }
-    if (Object.keys(aus).length !== 2) return { err: "Sieger-Markt hat nicht genau zwei Auswahlen" };
-    return { markt: String(m.id), auswahlen: aus };
+    const w = _auswahlenAus(m.selections || [], S);
+    if (w.err) return { err: w.err };
+    return { markt: String(m.id), auswahlen: w.aus };
   }
   // PURE: Antwort der Live-Schnittstelle -> { markt, auswahlen } | { err }.
   function _liveSiegerAus(j, eventId, S) {
@@ -459,11 +483,9 @@
     if (m.isSuspended === true) return { err: "Sieger-Markt gesperrt" };
     if (Number(m.typeId) !== S.typeId) return { err: "Sieger-Markt mit unerwarteter Art (" + String(m.typeId) + ")" };
     const liste = Array.isArray(m.selectionIdList) ? m.selectionIdList : [], alle = (d.selections && typeof d.selections === "object") ? d.selections : {};
-    if (liste.length !== 2) return { err: "Sieger-Markt hat nicht genau zwei Auswahlen" };
-    const aus = {};
-    for (const sid of liste) { const x = alle[sid]; if (!x || !(Number(x.price) > 1)) return { err: "Auswahl ohne Quote (Markt gesperrt?)" }; aus[String(x.id != null ? x.id : sid)] = { preis: Number(x.price), name: String(x.name || "") }; }
-    if (Object.keys(aus).length !== 2) return { err: "Sieger-Markt hat nicht genau zwei Auswahlen" };
-    return { markt: String(m.id), auswahlen: aus };
+    const w = _auswahlenAus(liste.map((sid) => { const x = alle[sid]; return x ? Object.assign({}, x, { id: x.id != null ? x.id : sid }) : null; }), S);
+    if (w.err) return { err: w.err };
+    return { markt: String(m.id), auswahlen: w.aus };
   }
   async function _siegerLesen(eventId, live, S) {
     try {

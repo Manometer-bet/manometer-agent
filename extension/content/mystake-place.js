@@ -641,6 +641,85 @@
     return Object.assign({ odds: found.cellOdd }, r);
   }
 
+  // ---- 15.11.2026 — SIEGER-MARKT DER WEITEREN SPORTARTEN (Drop-Sportarten in die Setz-Agents) --------------------------------------
+  // Markt, Positionen und Titel je Sportart stehen
+  // in mystake-kombi.js SIEGER_CFG (am echten Schein gemessen). Der Auftrag nennt die GENAUE Auswahl (itemId = ItemID aus dem Katalog des
+  // Operators) und den Tipp in Buch-Sicht ("1" = erste Mannschaft des Buchs). Hier wird nichts gesucht und nichts gedreht:
+  //   Spiel = das der Seite und des Auftrags, Sportart des Buchs = die des Auftrags, noch nicht angepfiffen; der Sieger-Markt fuehrt GENAU die
+  //   Positionen der Sportart, offen und mit Quote; die Nummer des Auftrags ist genau der Ausgang tip; Quote ≥ Mindestquote.
+  //   Geklickt wird nur die Zelle im Block mit dem gemessenen TITEL (Pflicht — Am. Football: „Race to 20 points“ zeigt dieselben Quoten), unter
+  //   den Mannschaftsnamen des Spiels im Kopf der Seite. Danach muss der Schein GENAU diese eine Auswahl fuehren (ID, Spiel, Markt, Position),
+  //   offen, nicht live, Quote im Schein ≥ Mindestquote — sonst Schein leeren und nichts senden. Abgegeben wird wie die 1X2-Einzelwette (runSlip).
+  async function teamNamen(gameId) {
+    const res = await fetch(`${DATA}/prematch/getprematchgameall/en/${BRAND}/?games=,${gameId}`, { credentials: "omit" });
+    if (!res.ok) throw new Error("teams HTTP " + res.status);
+    let j = await res.json(); if (typeof j === "string") j = JSON.parse(j);
+    let spiele = j && j.game, teams = j && j.teams;
+    if (typeof spiele === "string") spiele = JSON.parse(spiele);
+    if (typeof teams === "string") teams = JSON.parse(teams);
+    const g = (Array.isArray(spiele) ? spiele : []).find((x) => x && String(x.id) === String(gameId));
+    const name = (id) => { const t = (Array.isArray(teams) ? teams : []).find((x) => x && String(x.ID) === String(id)); return t && t.Name ? String(t.Name).trim() : ""; };
+    return g ? { team1: name(g.t1), team2: name(g.t2) } : null;
+  }
+  // PURE: Spiel der Daten-API + Auftrag → { odds, ids } des Sieger-Markts | { fehler }.
+  function siegerAus(game, cfg, sportName, gameId, jetzt) {
+    if (!game || !game.ev) return { fehler: "game not readable" };
+    if (String(game.id) !== String(gameId)) return { fehler: "the book answered for another game" };
+    if (Number(game.sport) !== cfg.id) return { fehler: "not a " + sportName + " match at the book" };
+    if (!(Number(game.stunix) * 1000 > jetzt)) return { fehler: "the game has started or its start is unknown" };
+    const mk = game.ev[cfg.markt];
+    if (!mk || typeof mk !== "object") return { fehler: cfg.name + " market not offered" };
+    const tipVonPos = {}; for (const t of cfg.tips) tipVonPos[cfg.pos[t]] = t;
+    const odds = {}, ids = {}, nr = Object.keys(mk);
+    if (nr.length !== cfg.tips.length) return { fehler: "unexpected " + cfg.name + " market" };
+    for (const itemId of nr) {
+      const o = mk[itemId], tip = o && tipVonPos[o.pos];
+      if (!tip || odds[tip] != null) return { fehler: "unexpected " + cfg.name + " market" };
+      if (o.lock) return { fehler: cfg.name + " market is locked" };
+      if (!(Number(o.coef) > 1)) return { fehler: "outcome without a price" };
+      odds[tip] = Number(o.coef); ids[tip] = String(itemId);
+    }
+    return { odds, ids };
+  }
+  async function placeSieger({ gameId, sport, tip, itemId, amount, minOdds, amountBtc, amountEur }) {
+    const K = (typeof MSKOMBI !== "undefined") ? MSKOMBI : null;
+    if (!K || !K.SIEGER_CFG || typeof K.zelleAufSeite !== "function" || typeof K.slipStand !== "function") return { status: "blocked", reason: "winner-market script (mystake-kombi.js) not loaded in the page — nothing sent" };
+    const cfg = Object.prototype.hasOwnProperty.call(K.SIEGER_CFG, String(sport)) ? K.SIEGER_CFG[String(sport)] : null;
+    if (!cfg) return { status: "blocked", reason: "sport " + String(sport) + " is not connected" };
+    if (tip !== "1" && tip !== "2") return { status: "blocked", reason: "only home or away is placed in " + sport };
+    if (!/^\d{1,20}$/.test(String(itemId == null ? "" : itemId))) return { status: "blocked", reason: "selection number of the order missing — nothing placed without it" };
+    if (String(currentGameId()) !== String(gameId)) return { status: "blocked", reason: "the page shows another game" };
+    const titel = cfg.titel && typeof K._sprache === "function" ? cfg.titel[K._sprache()] : null;
+    if (!titel) return { status: "blocked", reason: "title of the " + sport + " winner market unknown for this page language (measured: English) — nothing sent" };
+    const pre = await prepareSlip(); if (pre) return { status: "blocked", reason: pre };
+    let game, namen;
+    try { game = await gameFull(gameId); namen = await teamNamen(gameId); } catch (e) { return { status: "blocked", reason: "Odds not loadable: " + String((e && e.message) || e) }; }
+    const w = siegerAus(game, cfg, sport, gameId, Date.now());
+    if (w.fehler) return { status: "blocked", reason: w.fehler };
+    if (w.ids[tip] !== String(itemId)) return { status: "blocked", reason: "the selection number of the order is not outcome " + tip + " of the " + cfg.name + " market — nothing sent" };
+    const quote = w.odds[tip];
+    if (quote < Number(minOdds)) return { status: "blocked", reason: `Odds ${quote} below min ${minOdds}. Not placed.` };
+    if (!namen || !namen.team1 || !namen.team2) return { status: "blocked", reason: "team names of the game not readable" };
+    const g = { tips: cfg.tips, odds: w.odds, titel, team1: namen.team1, team2: namen.team2 };
+    const zelle = await waitFor(() => K.zelleAufSeite(tip, g, true), { timeout: 6000 });
+    if (!zelle) return { status: "blocked", reason: "winner cell (" + titel + ") not found on the page — nothing sent" };
+    realClick(zelle);
+    let st = null;
+    for (let i = 0; i < 12; i++) { await sleep(250); st = await K.slipStand(1500); if (st && st.ok && st.priceCount >= 1) break; }
+    const p0 = st && st.ok && Array.isArray(st.prices) ? st.prices[0] : null;
+    const richtig = !!(st && st.ok && st.priceCount === 1 && st.prices.length === 1 && p0 && String(p0.id) === String(itemId) && String(p0.matchId) === String(gameId)
+      && String(p0.marketId) === String(cfg.markt) && Number(p0.pos) === Number(cfg.pos[tip]) && !p0.disabled && !p0.locked && !p0.live);
+    if (!richtig || !(Number(p0.coef) >= Number(minOdds))) {
+      let leer = false; try { leer = await clearSlip(); } catch (_) {}
+      const was = st && st.ok ? (st.prices || []).map((x) => x.id + "/" + x.marketId + "/" + x.pos + "@" + x.coef).join(", ") : String((st && st.fehler) || "betslip not readable");
+      return { status: "blocked", reason: (richtig ? "odds in the betslip " + p0.coef + " below min " + minOdds : "the betslip does not hold exactly the ordered selection (" + was.slice(0, 160) + ")") + (leer ? " — slip cleared" : " — slip could NOT be cleared, check it") + ", nothing sent" };
+    }
+    const r = await runSlip({ amount, amountBtc, amountEur, targetItemId: String(itemId) });
+    return Object.assign({ odds: Number(p0.coef) }, r);
+  }
+  // Nur fuer die Tests (vm): die reine Pruefung des Sieger-Markts.
+  try { window.__engineMsSiegerAus = siegerAus; } catch (_) {}
+
   chrome.runtime.onMessage.addListener((msg, _s, reply) => {
     // NUR der Sportsbook-Iframe antwortet. Das Script laeuft in ALLEN Frames; ohne diese Sperre
     // antwortet der Top-Frame zuerst mit "Placement requires the sportsbook area (iframe)" und die
@@ -657,6 +736,7 @@
           return reply(await MSKOMBI.place(msg, { brand: BRAND, emit: () => {} }));
         }
         if (msg.cmd === "msPlace1x2") return reply(await place1x2(msg));
+        if (msg.cmd === "msPlaceSieger") return reply(await placeSieger(msg));   // 15.11.2026: Sieger-Markt der weiteren Sportarten
         if (msg.cmd === "msPlaceLive1x2") return reply(await placeLive1x2(msg));
         if (msg.cmd === "msPlaceCs2") return reply(await placeCs2(msg));
         if (msg.cmd === "msPlaceAh") return reply(await placeAh(msg));

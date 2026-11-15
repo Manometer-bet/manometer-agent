@@ -67,8 +67,20 @@
   const SETZEN = API + "/legacy-web/betting/submitTicket?clientSourceType=Desktop_new";                   // POST — DER Punkt ohne Wiederkehr (nur in sende)
   const ABLEHNEN = API + "/legacy-web/betting/handleAuthTicket?clientSourceType=Desktop_new";             // POST — nur das Nein zu einem Gegenangebot (nur in lehneAb)
   // Sieger-Markt je Sportart: Sportart-Nr. des Buchs, Markt-Nr. und -Name, erlaubte Tipps (Reihenfolge des Buchs), Name im Schein.
+  // gemessen am oeffentlichen
+  // Angebot (volles Spiel /v3/…/events?events=<Nr.>) und am anonymen Schein im GR-Chrome (sportId / sportName / Ausgangs-Nr. so, wie die Seite sie
+  // ablegt; je eine Auswahl rein und wieder raus). Basketball heisst inzwischen „To Win the Match (incl. overtime)“ (05.10. noch „Winner (incl.
+  // overtime)“) — beide Namen gelten, gesetzt wird mit dem Namen, den das Angebot gerade nennt. Die weiteren Sportarten nimmt nur die
+  // Einzelwette (superbet-place.js sbPlaceSieger) aus der eigenen Tabelle SIEGER; MARKT bleibt die Liste der Kombi (Fussball, Basketball — dieselbe
+  // wie parlay-core KOMBI_SPORT und KOMBI_BUCH.sports, die Tests vergleichen sie; scheinFehler prueft genau diese zwei).
   const MARKT = { soccer: { sportId: 5, marktId: 547, marktName: "Full Time", tips: ["1", "X", "2"], sportName: "Football" },
-    basketball: { sportId: 4, marktId: 759, marktName: "Winner (incl. overtime)", tips: ["1", "2"], sportName: "Basketball" } };
+    basketball: { sportId: 4, marktId: 759, marktName: "To Win the Match (incl. overtime)", marktNamen: ["To Win the Match (incl. overtime)", "Winner (incl. overtime)"], tips: ["1", "2"], sportName: "Basketball" } };
+  const SIEGER = { basketball: MARKT.basketball,
+    tennis:     { sportId: 2, marktId: 521, marktName: "Match Winner", tips: ["1", "2"], sportName: "Tennis" },
+    volleyball: { sportId: 1, marktId: 745, marktName: "Winner", tips: ["1", "2"], sportName: "Volleyball" },
+    amfootball: { sportId: 12, marktId: 592, marktName: "Moneyline (incl. overtime)", tips: ["1", "2"], sportName: "American Football" },
+    icehockey:  { sportId: 3, marktId: 630, marktName: "Winner (incl. overtime and penalties)", tips: ["1", "2"], sportName: "Ice Hockey" },
+    handball:   { sportId: 11, marktId: 869, marktName: "Full Time", tips: ["1", "X", "2"], sportName: "Handball" } };
   const MIN = 2, MAX = 12, MIN_EINSATZ = 0.1, MAX_EINSATZ = 1000;         // Sicherheitsgrenzen dieses Bausteins (EUR), nicht die des Buchs
   const ECHTES_GELD = 1;                                                 // paymentBonusType: 1 = kein Bonus (2 Umsatz-Bonus, 3 Freiwette)
   const QUELLE_ART = 101, QUELLE_SEITE = 801;                            // sourceType „Regular“, sourceScreen wie die mitgeschnittenen Einzelwetten
@@ -249,8 +261,9 @@
   // ---- PURE: ein Bein aus dem frischen Angebot ------------------------------------------------------------------------------
   // ev = das Spiel aus dem Angebots-Abruf, L = das Bein des Auftrags (Tipp und Mannschaften in der Reihenfolge des BUCHS).
   // → { fehler, preis? } | { preis, tags, eintrag (der Eintrag des Scheins), kennung (Quoten-Kennung), ausgang (Ausgangs-Nr.) }
-  function beinAus(ev, L, jetzt) {
-    const M = cfgVon(L.sport);
+  // einzel (15.11.2026): Einzelwette der weiteren Sportarten — der Markt kommt aus SIEGER statt MARKT, sonst dieselbe Pruefung.
+  function beinAus(ev, L, jetzt, einzel) {
+    const M = einzel === true ? (Object.prototype.hasOwnProperty.call(SIEGER, String(L.sport)) ? SIEGER[String(L.sport)] : null) : cfgVon(L.sport);
     if (!M) return { fehler: "sport " + String(L.sport) + " is not connected for combos" };
     if (!ev || typeof ev !== "object") return { fehler: "the game is not offered (any more)" };
     const fx = ev.fixture && typeof ev.fixture === "object" ? ev.fixture : {}, meta = ev.inplay_stats_metadata && typeof ev.inplay_stats_metadata === "object" ? ev.inplay_stats_metadata : {};
@@ -262,7 +275,7 @@
     if (String(meta.status).toUpperCase() !== "NOT_STARTED" || !(ko > jetzt)) return { fehler: "the game has started or its kick-off is unknown" };
     if (!(fx.offer_state_status && typeof fx.offer_state_status === "object" && fx.offer_state_status["1"] === 1)) return { fehler: "the pre-match offer of the game is not open" };
     if (fx.resolving_rules != null && !(Array.isArray(fx.resolving_rules) && fx.resolving_rules.length === 0)) return { fehler: "the game carries special settlement rules" };
-    const maerkte = (Array.isArray(ev.markets) ? ev.markets : []).filter((m) => m && Number(m.id) === M.marktId && String(m.name) === M.marktName);
+    const maerkte = (Array.isArray(ev.markets) ? ev.markets : []).filter((m) => m && Number(m.id) === M.marktId && (M.marktNamen || [M.marktName]).indexOf(String(m.name)) >= 0);
     if (maerkte.length !== 1) return { fehler: "winner market (" + M.marktName + ") not found" };
     const markt = maerkte[0], odds = Array.isArray(markt.odds) ? markt.odds : [];
     if (!gleicheMenge(odds.map((o) => String(o && o.metadata ? o.metadata.name : "")), M.tips)) return { fehler: "the winner market does not hold exactly the outcomes " + M.tips.join(" / ") };
@@ -636,7 +649,7 @@
   }
 
   const beschaeftigt = () => laeuft || [...wartend.values()].some((z) => Date.now() - z.start < WARTE_ALT_MS);
-  self.SBKOMBI = { place, nachfragen, laeuft: () => laeuft, beschaeftigt, MARKT, _dez: dez, _zahl: zahl, _plus: plus, _minus: minus, _mal: mal, _durch: durch, _runde: runde, _konfigAus: konfigAus, _steuerStufen: steuerStufen,
+  self.SBKOMBI = { place, nachfragen, laeuft: () => laeuft, beschaeftigt, MARKT, SIEGER, _einzelAus: (ev, L, jetzt) => beinAus(ev, L, jetzt, true), _dez: dez, _zahl: zahl, _plus: plus, _minus: minus, _mal: mal, _durch: durch, _runde: runde, _konfigAus: konfigAus, _steuerStufen: steuerStufen,
     _bonusStufen: bonusStufen, _regelnAus: regelnAus, _bonusFaehig: bonusFaehig, _bonusProzent: bonusProzent, _steuerAuf: steuerAuf, _rechne: rechne, _beinAus: beinAus, _baueSchein: baueSchein, _scheinFehler: scheinFehler,
     _angebotText: angebotText, _fehlerText: fehlerText, _klassifiziere: klassifiziere, _passt: passt };
 })();

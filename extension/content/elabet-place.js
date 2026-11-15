@@ -81,6 +81,9 @@
     volleyball: { sportTyp: 19, sportId: 69, markt: 186, arten: "1,3", name: "Sieger-Markt", seiten: "Heim/Gast", kein: "kein Volleyball" },
     amfootball: { sportTyp: 20, sportId: 75, markt: 219, arten: "1,3", name: "Sieger-Markt", seiten: "Heim/Gast", kein: "kein American Football" },
     baseball: { sportTyp: 13, sportId: 76, markt: 251, arten: "1,3", name: "Sieger-Markt", seiten: "Heim/Gast", kein: "kein Baseball" },
+    // 15.11.2026 Handball: sport.typeId 17 / id 73, Markt 1 „1x2“ (Heim / Remis / Gast, gemessen an 3 Vorspielen). remisNie: gesetzt wird nur
+    // Heim oder Gast — eine Remis-Auswahl wird hier abgewiesen, auch wenn sie im Auftrag steht.
+    handball: { sportTyp: 17, sportId: 73, markt: 1, arten: "1,2,3", name: "1x2-Markt", seiten: "Heim/Remis/Gast", kein: "kein Handball", remisNie: true },
   };
   // Sportart des Auftrags: ohne Angabe Fussball (Auftraege von vor dem 04.10.2026). Unbekannt = null -> wird nicht gesetzt.
   function siegerVon(auswahl) {
@@ -181,6 +184,7 @@
     if (markt.sv || o.sv || "preBoostedPrice" in o) return { fehler: "Auswahl traegt Linie oder Preis-Boost — Schein-Form nicht mitgelesen" };
     const art = Number(o.typeId), ms = Array.isArray(det.competitors) ? det.competitors : [];
     if (M.arten.split(",").indexOf(String(art)) < 0) return { fehler: "unbekannte Auswahl-Art " + String(o.typeId) };
+    if (M.remisNie === true && art === 2) return { fehler: "Remis wird in dieser Sportart nicht gesetzt" };
     if (ms.length !== 2 || ms[0].id == null || ms[1].id == null) return { fehler: "Mannschaften nicht lesbar" };
     const gehoertZu = art === 1 ? ms[0].id : art === 3 ? ms[1].id : null;
     if (art === 2 ? o.competitorId != null : o.competitorId !== gehoertZu) return { fehler: "Auswahl passt nicht zur Mannschaft" };

@@ -115,6 +115,36 @@
   // superbet-kombi.js des Operators, VOR dieser Datei eingespritzt). Die Einzelwette (sbPlace) bleibt unberuehrt.
   const kombiDa = () => (typeof SBKOMBI !== "undefined" && !!SBKOMBI && typeof SBKOMBI.place === "function" && typeof SBKOMBI.nachfragen === "function");
 
+  // 15.11.2026 — SIEGER-MARKT DER WEITEREN SPORTARTEN (Drop-Sportarten in die Setz-Agents; Betreiber: „… Superbet im GR-Chrome. Und dann gleich
+  // einbauen.“). Der Auftrag nennt Spiel-Nr., Sportart, Tipp in BUCH-Sicht ("1" = erste Mannschaft des Buchs) und die Ausgangs-Nr. aus dem Katalog
+  // des Operators. Das frische Angebot DIESES Spiels (oeffentlich, volles Spiel) prueft der Kombi-Baustein Bein fuer Bein (SBKOMBI._einzelAus:
+  // Sportart, nicht angepfiffen, Vorspiel offen, keine Sonderregeln, genau der Sieger-Markt mit genau seinen Ausgaengen, Quoten-Text nennt die
+  // Mannschaft, Kennungen lesbar, Quote ≥ Mindestquote) und baut den Eintrag des Scheins wie die mitgeschnittenen Einzelwetten. Die Ausgangs-Nr.
+  // muss die des Auftrags sein. Abgegeben wird wie die Fussball-Einzelwette (place).
+  const ANGEBOT_EIN = "https://production-superbet-offer-gr.freetls.fastly.net/v3/en-GR/events?events=";
+  async function placeSieger(msg) {
+    const K = (typeof SBKOMBI !== "undefined") ? SBKOMBI : null;
+    if (!K || typeof K._einzelAus !== "function" || !K.SIEGER) return { status: "blocked", reason: "superbet: winner-market script (superbet-kombi.js) not loaded — reload the superbet.gr tab, nothing sent" };
+    const sport = String(msg.sport || ""), tip = String(msg.tip || ""), nr = String(msg.outcomeId == null ? "" : msg.outcomeId), id = String(msg.eventId == null ? "" : msg.eventId);
+    if (!Object.prototype.hasOwnProperty.call(K.SIEGER, sport)) return { status: "blocked", reason: "superbet: sport " + sport + " is not connected" };
+    if (tip !== "1" && tip !== "2") return { status: "blocked", reason: "superbet: only home or away is placed in " + sport };
+    if (!/^\d{1,12}$/.test(nr)) return { status: "blocked", reason: "superbet: outcome number of the order missing — nothing placed without it" };
+    if (!/^\d{4,12}$/.test(id)) return { status: "blocked", reason: "superbet: game number unreadable" };
+    let ev = null;
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 12000);
+      const r = await fetch(ANGEBOT_EIN + id, { credentials: "omit", cache: "no-store", signal: ctl.signal }).finally(() => clearTimeout(t));
+      if (!r.ok) return { status: "blocked", reason: "superbet: offer HTTP " + r.status };
+      const j = await r.json(); ev = ((j && j.events) || []).find((e) => e && String(e.event_id) === id) || null;
+    } catch (e) { return { status: "blocked", reason: "superbet: offer not readable (" + String((e && e.message) || e).slice(0, 80) + ")" }; }
+    if (!ev) return { status: "blocked", reason: "superbet: the game is not offered (any more)" };
+    const namen = String((ev.fixture && ev.fixture.event_name) || "").split("·").map((x) => x.trim());
+    const b = K._einzelAus(ev, { eventId: id, tip, minOdds: Number(msg.minOdds), team1: namen[0] || "", team2: namen[1] || "", sport }, Date.now());
+    if (b.fehler) return { status: "blocked", reason: "superbet: " + b.fehler, odds: b.preis != null ? b.preis : undefined };
+    if (String(b.ausgang) !== nr) return { status: "blocked", reason: "superbet: the outcome number of the order (" + nr + ") is not outcome " + tip + " of the winner market (" + b.ausgang + ") — nothing sent" };
+    return await place({ item: b.eintrag, total: msg.total, minOdds: msg.minOdds, ident: { eventId: id, betradarId: String(b.eintrag.betRadarId || "") } });
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, send) => {
     if (!msg || !msg.cmd) return;
     if (msg.cmd === "ping") { send({ ok: true, bm: "superbet", v: V, kombi: kombiDa() }); return; }
@@ -125,5 +155,6 @@
       return true;
     }
     if (msg.cmd === "sbPlace") { place(msg).then(send).catch((e) => send({ status: "uncertain", reason: "superbet: " + String((e && e.message) || e) })); return true; }
+    if (msg.cmd === "sbPlaceSieger") { placeSieger(msg).then(send).catch((e) => send({ status: "uncertain", reason: "superbet: " + String((e && e.message) || e) })); return true; }
   });
 })();

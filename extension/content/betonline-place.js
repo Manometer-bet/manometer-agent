@@ -82,7 +82,13 @@
     if (seiten.length !== 1) return { fehler: "rotation " + a.rotation + " does not belong to this game" };
     const seite = seiten[0][0];
     if (seite !== a.sel) return { fehler: "wrong side: rotation " + a.rotation + " is " + seite + " in this game, the order says " + a.sel };
-    if (!offen(g.HomeLine && g.HomeLine.MoneyLine) || !offen(g.AwayLine && g.AwayLine.MoneyLine) || !offen(g.DrawLine && g.DrawLine.MoneyLine)) return { fehler: "1X2 market incomplete (a moneyline without a draw price would be another bet)" };
+    // 15.11.2026 (Drop-Sportarten): Fussball und Handball setzen die 1X2-Moneyline (alle drei Preise Pflicht), die 2-Weg-Sportarten die Moneyline
+    // OHNE Draw — fuehrt das Spiel dort einen Draw-Preis, ist es die Wette der regulaeren Zeit und nicht der Sieger inklusive Verlaengerung.
+    if (a.dreiWeg === false) {
+      if (seite === "draw") return { fehler: "no draw in a 2-way winner market" };
+      if (!offen(g.HomeLine && g.HomeLine.MoneyLine) || !offen(g.AwayLine && g.AwayLine.MoneyLine)) return { fehler: "moneyline incomplete" };
+      if (obj(g.DrawLine) && Number(obj(g.DrawLine.MoneyLine) ? g.DrawLine.MoneyLine.DecimalLine : 0) > 1) return { fehler: "moneyline lists a draw — not the 2-way winner of this sport" };
+    } else if (!offen(g.HomeLine && g.HomeLine.MoneyLine) || !offen(g.AwayLine && g.AwayLine.MoneyLine) || !offen(g.DrawLine && g.DrawLine.MoneyLine)) return { fehler: "1X2 market incomplete (a moneyline without a draw price would be another bet)" };
     const zeile = seite === "home" ? g.HomeLine : seite === "away" ? g.AwayLine : g.DrawLine, p = preisAus(zeile && zeile.MoneyLine);
     if (!p) return { fehler: "price of the outcome unreadable (american and decimal disagree)" };
     if (p.preis < a.minOdds) return { fehler: "odds " + p.preis.toFixed(3) + " below min " + a.minOdds.toFixed(2), odds: runde6(p.preis) };
@@ -188,12 +194,16 @@
     return await res.json();
   }
 
+  // 15.11.2026: Buch-Pfad der Liga → 1X2 (true) oder 2-Weg-Moneyline (false). Was hier fehlt, setzt dieses Script nicht.
+  const SPORT_FORM = { soccer: true, handball: true, basketball: false, football: false, hockey: false, tennis: false, volleyball: false };
   function auftragAus(msg) {
     const s = obj(msg.slug), a = { eventId: String(msg.eventId == null ? "" : msg.eventId), rotation: String(msg.rotation == null ? "" : msg.rotation), sel: msg.sel, toRisk: msg.toRisk, minOdds: Number(msg.minOdds), slug: s };
     if (!/^\d{4,12}$/.test(a.eventId) || !/^\d{1,12}$/.test(a.rotation)) return null;
     if (a.sel !== "home" && a.sel !== "draw" && a.sel !== "away") return null;
     if (!Number.isInteger(a.toRisk) || a.toRisk < 1 || !(a.minOdds > 1)) return null;
-    if (!s || s.sport !== "soccer" || typeof s.league !== "string" || !s.league) return null;
+    if (!s || typeof s.sport !== "string" || !Object.prototype.hasOwnProperty.call(SPORT_FORM, s.sport) || typeof s.league !== "string" || !s.league) return null;
+    a.dreiWeg = SPORT_FORM[s.sport];
+    if (s.sport !== "soccer" && a.sel === "draw") return null;   // Handball: gesetzt wird nur Heim oder Gast
     return a;
   }
 
@@ -275,5 +285,5 @@
     return true;
   });
 
-  try { window.__engineBoTest = { dezimalAus, preisAus, pruefeAuswahl, pruefeZeile, antwortAus, zeileAus, addLineAus, scheinAus, einmal }; } catch (_) {}
+  try { window.__engineBoTest = { dezimalAus, preisAus, pruefeAuswahl, pruefeZeile, antwortAus, zeileAus, addLineAus, scheinAus, einmal, auftragAus }; } catch (_) {}
 })();

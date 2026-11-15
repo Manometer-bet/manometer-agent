@@ -54,6 +54,9 @@
     volleyball: { alias: "Volleyball", typ: "P1P2", art: "MatchWinner2", arten: { W1: "home", W2: "away" }, markt: "Sieger-Markt", maerkte: "Sieger-Maerkte", kein: "kein Volleyball" },
     amfootball: { alias: "AmericanFootball", typ: "P1P2", art: "MatchWinner", arten: { W1: "home", W2: "away" }, markt: "Sieger-Markt", maerkte: "Sieger-Maerkte", kein: "kein American Football" },
     baseball: { alias: "Baseball", typ: "P1P2", art: "MatchResult", arten: { W1: "home", W2: "away" }, markt: "Sieger-Markt", maerkte: "Sieger-Maerkte", kein: "kein Baseball" },
+    // 15.11.2026 Handball: das 1X2 der regulaeren Zeit (P1XP2 / MatchWinner, W1 / X / W2 — gemessen am Dienst). Der Markt muss alle drei
+    // fuehren; gesetzt wird nur W1 oder W2 (die Engine laesst X fuer Handball gar nicht durch, books/efbet.js SPORT).
+    handball: { alias: "Handball", typ: "P1XP2", art: "MatchWinner", arten: { W1: "home", X: "draw", W2: "away" }, markt: "1x2-Markt", maerkte: "1x2-Maerkte", kein: "kein Handball" },
   };
   // Sportart des Auftrags: ohne Angabe Fussball (Auftraege von vor dem 04.10.2026). Unbekannt = null -> wird nicht gesetzt.
   function siegerVon(auswahl) {

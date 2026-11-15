@@ -16,7 +16,7 @@
 // Warten und Nachfragen macht der Service Worker: Zeitgeber eines Hintergrund-Tabs drosselt Chrome.
 (() => {
   "use strict";
-  const KERN = "orbit-back-2";            // Fassung dieses Scripts, muss zu books/orbitxch.js passen; eine neue Fassung ersetzt die alte im Tab (-2: + Basketball, 13.11.2026)
+  const KERN = "orbit-back-3";            // Fassung dieses Scripts, muss zu books/orbitxch.js passen; eine neue Fassung ersetzt die alte im Tab (-3: + weitere 2-Weg-Sportarten, 15.11.2026; -2: + Basketball, 13.11.2026)
   if (window.__engineOrbit && window.__engineOrbit.kern === KERN) return;
 
   // Wie handleOrbitPlace (background.js): 3 % Provision auf den Netto-Gewinn, Grenzen des Auftragswegs, Orbits Preisleiter.
@@ -74,6 +74,9 @@
   // Sieger-Markt des Spiels (Form wie parseDetails in collectors/orbitxch.js): Reihenfolge der Laeufer = Buch-Sicht, 0 Heim, 1 Gast, 2 Remis.
   // 13.11.2026 (orbit-back-2): a.sport "basket" = Basketball — eventType Basketball und genau ZWEI Laeufer Heim / Gast, keiner heisst Remis
   // (gemessen an Orbits Spiel-Details: Match Odds ohne Remis-Laeufer = inklusive Verlaengerung). Ohne Angabe oder "fb": Fussball wie bisher.
+  // 15.11.2026 (orbit-back-3): dazu die weiteren 2-Weg-Drop-Sportarten, Feed-Name → eventType bei Orbit. Je genau ZWEI Laeufer, keiner
+  // heisst Remis (Match Odds ohne Remis = inklusive Verlaengerung / Tie-Break / Extra-Innings). Handball fuehrt Orbit nicht.
+  const ZWEIWEG = { basket: "basketball", tennis: "tennis", icehockey: "ice hockey", volleyball: "volleyball", amfootball: "american football", baseball: "baseball" };
   async function marktLesen(a) {
     const r = await lies("event/details/" + encodeURIComponent(a.eventId));
     if (!r.ok || !r.j || !Array.isArray(r.j.marketCatalogues)) return { fehler: "Orbit: game " + a.eventId + " not readable (HTTP " + r.status + ")" };
@@ -82,8 +85,8 @@
     const m = liste[0];
     if (String(m.marketId) !== a.marketId) return { fehler: "Orbit: market " + a.marketId + " is not the match odds market of game " + a.eventId };
     if (!m.event || String(m.event.id) !== a.eventId) return { fehler: "Orbit: market belongs to another game" };
-    const basket = a.sport === "basket";
-    if (basket) { if (!m.eventType || String(m.eventType.name).toLowerCase() !== "basketball") return { fehler: "Orbit: game is not basketball" }; }
+    const basket = Object.prototype.hasOwnProperty.call(ZWEIWEG, String(a.sport));   // 2-Weg-Sieger (Name aus Basketball-Zeiten)
+    if (basket) { if (!m.eventType || String(m.eventType.name).toLowerCase() !== ZWEIWEG[a.sport]) return { fehler: "Orbit: game is not " + ZWEIWEG[a.sport] }; }
     else if (!m.eventType || String(m.eventType.name).toLowerCase() !== "soccer") return { fehler: "Orbit: game is not football" };
     const c = Number(m.commission);
     if (!(c >= 0) || m.commission == null) return { fehler: "Orbit: commission not readable" };
@@ -91,7 +94,7 @@
     if (c > PROVISION * 100 + 1e-9) return { fehler: "Orbit: commission " + c + " % is above the " + (PROVISION * 100) + " % this Agent calculates with — effective odds would be wrong" };
     const rs = Array.isArray(m.runners) ? m.runners : [];
     const remis = (r) => /^(the )?draw$/i.test(String(r && r.runnerName));
-    if (basket) { if (rs.length !== 2 || remis(rs[0]) || remis(rs[1])) return { fehler: "Orbit: runners are not home / away (basketball winner market incl. overtime)" }; }
+    if (basket) { if (rs.length !== 2 || remis(rs[0]) || remis(rs[1])) return { fehler: "Orbit: runners are not home / away (" + ZWEIWEG[a.sport] + " winner market incl. overtime)" }; }
     else if (rs.length !== 3 || !remis(rs[2]) || remis(rs[0]) || remis(rs[1])) return { fehler: "Orbit: runners are not home / away / draw" };
     const seite = (basket ? { home: rs[0], away: rs[1] } : { home: rs[0], away: rs[1], draw: rs[2] })[a.sel];
     if (!seite) return { fehler: "Orbit: selection side " + String(a.sel).slice(0, 8) + " unknown" };
@@ -251,7 +254,7 @@
     if (a.art !== "setzen") return Promise.resolve({ ok: false, grund: "order type or number unknown" });
     if (!/^[A-Za-z0-9_.:-]{6,140}$/.test(String(a.auftragId == null ? "" : a.auftragId))) return Promise.resolve({ gesendet: false, status: "blocked", reason: "Orbit: order number missing — nothing sent" });
     if (!/^\d{5,15}$/.test(String(a.eventId || "")) || !/^\d{1,12}$/.test(String(a.selectionId || ""))) return Promise.resolve({ gesendet: false, status: "blocked", reason: "Orbit: game or selection number unreadable — nothing sent" });
-    if (!(a.sport == null || a.sport === "fb" || a.sport === "basket")) return Promise.resolve({ gesendet: false, status: "blocked", reason: "Orbit: sport " + String(a.sport).slice(0, 12) + " unknown in this page script — nothing sent" });
+    if (!(a.sport == null || a.sport === "fb" || Object.prototype.hasOwnProperty.call(ZWEIWEG, String(a.sport)))) return Promise.resolve({ gesendet: false, status: "blocked", reason: "Orbit: sport " + String(a.sport).slice(0, 12) + " unknown in this page script — nothing sent" });
     return einmal(a);
   }
   window.__engineOrbit = { kern: KERN, auftrag };

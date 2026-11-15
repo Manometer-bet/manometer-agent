@@ -47,9 +47,27 @@
   //              Spielzeit mit Remis, ein anderer Markt als der der Fair (Sieger inklusive Verlaengerung).
   // Ein gemischter Schein (Basketball + Fussball) ist kombinierbar (chains true, Reiter Multiple, Gesamtquote = Produkt).
   // Eine weitere Sportart = eine Zeile hier — nach derselben Messung (Markt-Nr., Positionen, Titel, Zellenzahl).
+  // die
+  // weiteren Sportarten, gemessen an der Markt-Definition des Buchs (getprematchmarketsbysport) und am echten Sportsbook im normalen Chrome
+  // (Titel des Blocks, Zellen in Spaltenfolge, je eine Auswahl in den Schein und wieder heraus: ID = ItemID, marketID, positionID):
+  //   Tennis 5 / 566 „Match winner“ 1053 · 1054 · Volleyball 22 / 587 „Match winner“ 1844 · 1845 (die Definition schreibt „Match Winner“, die
+  //   Seite „Match winner“) · Am. Football 15 / 18168 „Match winner (incl. overtime)“ 111198 · 111199 (ACHTUNG: „Race to 20 points (incl.
+  //   overtime)“ zeigte dieselben Quoten — nur der Titel trennt) · Eishockey 4 / 290 „Match winner (incl. OT & pen.)“ 1045 · 1046 (304 ist
+  //   „Draw no bet“, 291 „Match result“ 3-Weg) · Handball 6 / 258 „Match result“ 1118 · 1119 · 1120 (1X2 regulaer, gesetzt wird nur 1 oder 2).
+  //   Deutsche Titel nicht gemessen: auf einer deutschen Seite fehlt der Titel, dann setzt die Einzelwette nicht (mystake-place.js placeSieger).
+  //   Kombiwetten nehmen diese Sportarten NICHT: sie stehen in einer eigenen Tabelle SIEGER_CFG (nur Einzelwette), SPORT_CFG bleibt die Liste
+  //   der Kombi (dieselbe wie parlay-core KOMBI_SPORT und KOMBI_BUCH.sports — die Tests vergleichen sie).
   const SPORT_CFG = {
     soccer:     { id: 1, markt: "448", name: "match result", tips: ["1", "X", "2"], pos: { "1": 1, "X": 2, "2": 3 }, titel: { en: "Match result", de: "Endergebnis" } },
     basketball: { id: 2, markt: "103", name: "match winner", tips: ["1", "2"],      pos: { "1": 697, "2": 698 },      titel: { en: "Match winner (incl. overtime)", de: "Gewinner (inkl. OT)" } }
+  };
+  const SIEGER_CFG = {
+    basketball: SPORT_CFG.basketball,
+    tennis:     { id: 5, markt: "566", name: "match winner", tips: ["1", "2"],      pos: { "1": 1053, "2": 1054 },    titel: { en: "Match winner" } },
+    volleyball: { id: 22, markt: "587", name: "match winner", tips: ["1", "2"],     pos: { "1": 1844, "2": 1845 },    titel: { en: "Match winner" } },
+    amfootball: { id: 15, markt: "18168", name: "match winner", tips: ["1", "2"],   pos: { "1": 111198, "2": 111199 }, titel: { en: "Match winner (incl. overtime)" } },
+    icehockey:  { id: 4, markt: "290", name: "match winner", tips: ["1", "2"],      pos: { "1": 1045, "2": 1046 },    titel: { en: "Match winner (incl. OT & pen.)" } },
+    handball:   { id: 6, markt: "258", name: "match result", tips: ["1", "X", "2"], pos: { "1": 1118, "X": 1119, "2": 1120 }, titel: { en: "Match result" } }
   };
   const MARKT = SPORT_CFG.soccer.markt, MIN = 2, MAX = 12, TIPS_3WEG = SPORT_CFG.soccer.tips;
   const cfgVon = (sport) => { const k = String(sport == null || sport === "" ? "soccer" : sport); return Object.prototype.hasOwnProperty.call(SPORT_CFG, k) ? SPORT_CFG[k] : null; };
@@ -369,5 +387,5 @@
   // 05.10.2026 — slipStand und zelleAufSeite stehen auch der EINZELWETTE offen (mystake-content.js placeOneClick / highlight,
   // Engine mystake-place.js): dieselbe Zellen-Suche (ein Cent Toleranz, Kit 50-fallen.md P16) und derselbe Blick in den Schein
   // (Auswahl-Nummer, echte Quote) wie beim Kombi-Aufbau. Am Ablauf der Kombiwette aendert das nichts.
-  self.MSKOMBI = { place, laeuft: () => laeuft, slipStand, zelleAufSeite, _quotenAlle: quotenAlle, _zelleAufSeite: zelleAufSeite, _bisDa: bisDa, SEL, MARKT, SPORT_CFG, _sprache: sprache };
+  self.MSKOMBI = { place, laeuft: () => laeuft, slipStand, zelleAufSeite, _quotenAlle: quotenAlle, _zelleAufSeite: zelleAufSeite, _bisDa: bisDa, SEL, MARKT, SPORT_CFG, SIEGER_CFG, _sprache: sprache };
 })();
