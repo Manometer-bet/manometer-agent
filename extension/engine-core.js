@@ -189,16 +189,28 @@ export function wahlDeckel(wahl, w) {
   if (s.modus === "kelly") return (_num(s.bank) || 0) * (_num(s.anteil) || 0);
   return _num(s.eur) || 0;
 }
+// wahl.buchEinsatz =
+// { <buch>: { max, feed: { <slug>: € } } }, wie setzwahl-core.js buchStufe. Der Feed-Wert ersetzt bei diesem Buch die Obergrenze des Agents (0 = dieser Agent setzt dort nicht),
+// max deckelt jede Wette bei diesem Buch. In einer Tippgemeinschaft (wahl.gruppe) gilt nur max. Vorgaben ohne buchEinsatz (ältere Sidebar): alles wie bisher.
+export function buchStufe(wahl, buch, slug) {
+  const be = wahl && wahl.buchEinsatz, b = be && typeof be === "object" && Object.prototype.hasOwnProperty.call(be, String(buch)) ? be[String(buch)] : null;
+  if (!b || typeof b !== "object") return null;
+  const z = (v) => (typeof v === "number" && isFinite(v) && v >= 0 ? v : null), max = z(b.max) > 0 ? b.max : null;
+  const eur = wahl.gruppe || !b.feed || typeof b.feed !== "object" || !Object.prototype.hasOwnProperty.call(b.feed, String(slug)) ? null : z(b.feed[String(slug)]);
+  return max == null && eur == null ? null : { max, eur };
+}
 export function wahlPruefen(p, wahl, stake) {
   const slug = p && typeof p.agent === "string" ? p.agent : null;
   if (!slug || !wahl) return { stake };
   const phase = p.mkt === "parlay" ? "parlay" : p.live ? "live" : "pre", buch = wahl.buecher && Object.prototype.hasOwnProperty.call(wahl.buecher, String(p.book)) ? wahl.buecher[String(p.book)] : null;
   if (buch && buch[phase] === false) return { fehler: (phase === "pre" ? "pre-match" : phase === "live" ? "live" : "parlays") + " at " + p.book + " is switched off in your account" };
-  if (!wahl.agents) return { stake };
+  const bs = buchStufe(wahl, p.book, slug), aus = { fehler: "agent " + slug + " is switched off at " + p.book + " in your account" };
+  const deckel = (eur) => { const m = bs && bs.max != null ? (eur > 0 ? Math.min(eur, bs.max) : bs.max) : eur; return { stake: m > 0 && stake > m ? m : stake }; };
+  if (!wahl.agents) return bs && bs.eur === 0 ? aus : deckel(0);
   const w = Object.prototype.hasOwnProperty.call(wahl.agents, slug) ? wahl.agents[slug] : null;
   if (!w || w.on !== true) return { fehler: "agent " + slug + " is not selected in your account" };
-  const eur = wahlDeckel(wahl, w);
-  return { stake: eur > 0 && stake > eur ? eur : stake };
+  if (bs && bs.eur === 0) return aus;
+  return deckel(bs && bs.eur != null ? bs.eur : wahlDeckel(wahl, w));
 }
 // Wartezeit je Buch, wie setzwahl-core.js pauseFuer. letzteTs = Ende des letzten Versuchs bei diesem Buch.
 // Von Hand gesetzte Wetten (kein Agent-Name) warten nie, zählen aber: Das Buch hat sie gesehen. Ein Bein einer Arbitrage kann nicht warten. → Millisekunden, die noch fehlen.

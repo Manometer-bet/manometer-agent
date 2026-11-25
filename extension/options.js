@@ -115,7 +115,9 @@ function wahlZeilen(w) {
   // 01.11.2026: Pause zwischen zwei Wetten, wie im Konto festgelegt (CORE.pauseSekunden)
   const pausen = Object.keys(w.buecher || {}).filter((b) => typeof w.buecher[b].pauseS === "number").map((b) => (BOOK_LABEL[b] || b) + ": " + w.buecher[b].pauseS + " s");
   const pauseZeile = [[t("Pause zwischen Wetten", "Pause between bets"), [(typeof w.pauseS === "number" ? w.pauseS : 90) + " s"].concat(pausen).join(" · ")]];
-  return an.map((k) => [AGENT_NAME(k), einsatz(w.agents[k])]).concat(aus.length ? [[t("Im Konto ausgeschaltet", "Switched off in your account"), aus.join(" · ")]] : [], pauseZeile);
+  // 25.11.2026: Einsatz je Buchmacher, wie im Konto festgelegt (CORE.buchStufe). In einer Tippgemeinschaft gilt nur max.
+  const jeBuch = Object.keys(w.buchEinsatz || {}).map((b) => { const x = w.buchEinsatz[b] || {}, l = []; if (typeof x.max === "number" && x.max > 0) l.push("max " + eur(x.max)); if (!w.gruppe) Object.keys(x.feed || {}).forEach((s) => { if (typeof x.feed[s] === "number") l.push(AGENT_NAME(s) + " " + (x.feed[s] === 0 ? t("aus", "off") : eur(x.feed[s]))); }); return l.length ? (BOOK_LABEL[b] || b) + ": " + l.join(", ") : ""; }).filter(Boolean);
+  return an.map((k) => [AGENT_NAME(k), einsatz(w.agents[k])]).concat(aus.length ? [[t("Im Konto ausgeschaltet", "Switched off in your account"), aus.join(" · ")]] : [], jeBuch.length ? [[t("Einsatz je Buchmacher", "Stake per bookmaker"), jeBuch.join(" · ")]] : [], pauseZeile);
 }
 let _limitsAktiv = false;
 function limitsAnzeigen(l) {
